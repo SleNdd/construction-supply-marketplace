@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+!.env.demo
+node_modules/
+.next/
+coverage/
+dist/
+build/
+tmp/
+*.log
+*.exe
+.DS_Store
+Thumbs.db
+*.local
+!.gitkeep

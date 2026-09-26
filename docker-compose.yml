@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-obektmarket}
+      POSTGRES_USER: ${POSTGRES_USER:-obektmarket}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-demo-password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-obektmarket} -d ${POSTGRES_DB:-obektmarket}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build: ./api
+    environment:
+      NODE_ENV: production
+      API_PORT: 4000
+      DATABASE_URL: postgres://${POSTGRES_USER:-obektmarket}:${POSTGRES_PASSWORD:-local-demo-password}@db:5432/${POSTGRES_DB:-obektmarket}
+      SESSION_SECRET: ${SESSION_SECRET:-local-demo-session-secret-change-me}
+      CORS_ORIGIN: http://localhost:3000
+      DADATA_API_KEY: ${DADATA_API_KEY:-}
+      DADATA_SECRET_KEY: ${DADATA_SECRET_KEY:-}
+      GIS_ROUTING_KEY: ${GIS_ROUTING_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "-c", "npm run migrate && npm run seed && npm run start:prod"]
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    environment:
+      NODE_ENV: production
+      API_INTERNAL_URL: http://api:4000
+      NEXT_PUBLIC_MAPGL_KEY: ${GIS_MAP_KEY:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
