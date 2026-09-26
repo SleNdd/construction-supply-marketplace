@@ -20,5 +20,16 @@
 ## Образовательная программа
 
 10. [АГАСУ. Программа 09.03.02 «Информационные системы и технологии в строительстве и архитектуре», бакалавриат](https://www.aucu.ru/sveden/education/11938-09-03-02-informatsionnye-sistemy-i-tekhnologii-napravlennosti-profilya-informatsionnye-sistemy-i-tekhnologii-v-stroitelstve-i-arkhitekture-2024-g-bakalavriat).
+11. [АГАСУ. Программа выполнения и защиты ВКР, 09.03.02, 2024 год](https://www.aucu.ru/images/files/obrazovanie3/B3B01_IST2024.pdf).
+12. [Next.js. Документация App Router](https://nextjs.org/docs/app).
+13. [NestJS. Authentication](https://docs.nestjs.com/security/authentication).
+14. [NestJS. Guards](https://docs.nestjs.com/guards).
+15. [TypeScript. Handbook](https://www.typescriptlang.org/docs/handbook/intro.html).
+16. [React. Справочник API](https://react.dev/reference/react).
+17. [PostgreSQL 17. Управление изоляцией транзакций](https://www.postgresql.org/docs/17/transaction-iso.html).
+18. [PostgreSQL 17. Явные блокировки](https://www.postgresql.org/docs/17/explicit-locking.html).
+19. [Docker. Документация Compose](https://docs.docker.com/compose/).
+20. [OpenAPI Specification 3.1.1](https://spec.openapis.org/oas/v3.1.1.html).
+21. [W3C. Web Content Accessibility Guidelines 2.2](https://www.w3.org/TR/WCAG22/).
 
 Материалы площадок из списка использованы при сравнении пользовательских сценариев.
