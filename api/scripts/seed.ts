@@ -63,13 +63,13 @@ async function main() {
       {key:'demo-order-complete',product:'paint-white',quantity:2,status:'delivered',delivery:'delivered'},
     ]) {
       const offerId=id(`offer-${demo.product}-volga`);
-      const offer=await client.query<{price_kopecks:number;delivery_cost_kopecks:number}>('SELECT price_kopecks,delivery_cost_kopecks FROM offers WHERE id=$1',[offerId]);
+      const offer=await client.query<{price_kopecks:number;delivery_cost_kopecks:number;unit:string}>('SELECT o.price_kopecks,o.delivery_cost_kopecks,p.unit FROM offers o JOIN products p ON p.id=o.product_id WHERE o.id=$1',[offerId]);
       const price=offer.rows[0].price_kopecks;
       const deliveryCost=offer.rows[0].delivery_cost_kopecks;
       const inserted=await client.query<{id:string}>('INSERT INTO orders(id,buyer_id,project_id,address,status,items_total_kopecks,delivery_total_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id',[id(demo.key),id('buyer'),id('project-demo'),'Астрахань, ул. Савушкина, 6',demo.status,price*demo.quantity,deliveryCost]);
       if (!inserted.rowCount) continue;
       await client.query('UPDATE offers SET stock=stock-$1 WHERE id=$2',[demo.quantity,offerId]);
-      await client.query('INSERT INTO order_items(id,order_id,offer_id,supplier_id,product_name,quantity,price_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7)',[id(`${demo.key}-item`),id(demo.key),offerId,id('volga'),demo.product==='cement'?'Цемент М500 50 кг':'Краска интерьерная белая 10 л',demo.quantity,price]);
+      await client.query('INSERT INTO order_items(id,order_id,offer_id,supplier_id,product_name,unit,quantity,price_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id(`${demo.key}-item`),id(demo.key),offerId,id('volga'),demo.product==='cement'?'Цемент М500 50 кг':'Краска интерьерная белая 10 л',offer.rows[0].unit,demo.quantity,price]);
       await client.query('INSERT INTO deliveries(id,order_id,supplier_id,driver_id,status,scheduled_date,route,delivery_cost_kopecks) VALUES($1,$2,$3,$4,$5,current_date+1,$6,$7)',[id(`${demo.key}-delivery`),id(demo.key),id('volga'),id('driver'),demo.delivery,JSON.stringify([[48.003,46.351],[48.025,46.36],[48.057,46.371]]),deliveryCost]);
     }
     await client.query('COMMIT');
