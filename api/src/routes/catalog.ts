@@ -15,7 +15,7 @@ export class CatalogController {
     const q = (query.q || '').trim().slice(0,100);
     const category = (query.category || '').trim();
     const sort = query.sort || 'name';
-    const sortSql: Record<string,string> = {name:'p.name ASC',price_asc:'price_from_kopecks ASC NULLS LAST',price_desc:'price_from_kopecks DESC NULLS LAST'};
+    const sortSql: Record<string,string> = {name:'p.name ASC,p.id ASC',price_asc:'min(o.price_kopecks) ASC NULLS LAST,p.name ASC,p.id ASC',price_desc:'min(o.price_kopecks) DESC NULLS LAST,p.name ASC,p.id ASC'};
     if (!sortSql[sort]) throw new ApiError(400,'invalid_input','Неизвестная сортировка');
     const filter = "WHERE ($1='' OR p.name ILIKE '%'||$1||'%' OR p.description ILIKE '%'||$1||'%') AND ($2='' OR c.slug=$2 OR c.id::text=$2)";
     const total = await this.db.one<{count:string}>(`SELECT count(*)::text AS count FROM products p JOIN categories c ON c.id=p.category_id ${filter}`,[q,category]);

@@ -58,3 +58,11 @@ html[data-theme="dark"] .catalog-search input::placeholder{color:#a9bcae;opacity
 .admin-product-form .admin-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .admin-pagination{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:20px;color:var(--muted);font-size:12px}
 @media(max-width:560px){.admin-section .panel-heading{align-items:flex-start;flex-wrap:wrap}.admin-category-row,.admin-product-row{align-items:flex-start;flex-wrap:wrap}.admin-category-row .btn,.admin-product-row .btn{margin-left:auto}.admin-product-form .admin-form-grid{grid-template-columns:1fr}.admin-pagination{gap:8px}.admin-pagination .btn{padding:10px}}
+
+.skip-link{position:fixed;top:8px;left:8px;z-index:100;transform:translateY(-160%);background:var(--surface);color:var(--ink);border:2px solid var(--accent);padding:10px 14px;font-weight:700}
+.skip-link:focus{transform:translateY(0)}
+:where(a,button,input,select,textarea,summary):focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.hero-search:focus-within,.catalog-search:focus-within,.select-wrap:focus-within,.calc-fields label span:focus-within{outline:3px solid var(--accent);outline-offset:3px}
+.upload-zone{position:relative}
+.upload-zone input{display:block;position:absolute;width:1px;height:1px;opacity:0;top:50%;left:50%}
+.upload-zone:focus-within{outline:3px solid var(--accent);outline-offset:3px}

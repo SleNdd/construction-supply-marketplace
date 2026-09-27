@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowDownRight, ArrowRight, ArrowUpRight, Building2, Check, ChevronDown, Clock3, ClipboardList, Layers3, LayoutDashboard, MapPin, Menu, Moon, Package, Search, ShieldCheck, ShoppingBag, SlidersHorizontal, Sun, Truck, UserRound, X } from 'lucide-react';
 import { api, type CartItem, type Category, type Product, type User, money } from '@/lib/api';
 import { readCart, readCompare, saveCart, saveCompare } from '@/lib/storage';
+import { useDialogFocus } from '@/lib/use-dialog-focus';
 import { Catalog, ProductDetails, Compare } from './shopping';
 import { Cart, Checkout, Orders } from './orders';
 import { Projects, ProjectDetails } from './projects';
@@ -17,7 +18,6 @@ const roleNames: Record<User['role'], string> = { buyer: 'Покупатель',
 export function Marketplace() {
   const pathname = usePathname();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [compare, setCompare] = useState<string[]>([]);
@@ -66,11 +66,12 @@ export function Marketplace() {
   const current = segments[0] || 'home';
 
   return <>
+    <a className="skip-link" href="#main-content">Перейти к содержимому</a>
     <div className="announcement"><span className="announcement-dot" /> Учебная демонстрация: поставщики и заказы вымышлены, оплата без списания средств</div>
     <header className="site-header">
       <div className="container header-inner">
         <Link href="/" className="brand" aria-label="ОбъектМаркет — главная"><span className="brand-symbol"><Building2 size={22} strokeWidth={2.3} /></span><span>ОБЪЕКТ<span className="brand-accent">МАРКЕТ</span><small>материалы для результата</small></span></Link>
-        <nav className={menu ? 'main-nav open' : 'main-nav'} aria-label="Основная навигация">
+        <nav id="main-navigation" className={menu ? 'main-nav open' : 'main-nav'} aria-label="Основная навигация">
           <Link className={current === 'catalog' ? 'active' : ''} href="/catalog">Каталог</Link>
           <Link className={current === 'projects' ? 'active' : ''} href="/projects">Мои объекты</Link>
           <Link className={current === 'compare' ? 'active' : ''} href="/compare">Сравнение{compare.length > 0 && <span className="nav-count">{compare.length}</span>}</Link>
@@ -81,14 +82,14 @@ export function Marketplace() {
           <button className="icon-button theme-button" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} title={theme === 'light' ? 'Тёмная тема' : 'Светлая тема'} aria-label="Переключить тему">{theme === 'light' ? <Moon size={19} /> : <Sun size={19} />}</button>
           <Link className="icon-button bag-button" href="/cart" title="Корзина" aria-label={`Корзина, товаров: ${totalQuantity}`}><ShoppingBag size={20} />{totalQuantity > 0 && <span className="bag-badge">{totalQuantity}</span>}</Link>
           {user ? <div className="user-menu"><Link href="/workspace" className="user-link"><UserRound size={17}/><span>{user.name.split(' ')[0]}</span></Link><button className="link-button logout" onClick={logout}>Выйти</button></div> : <button className="btn btn-dark login-button" onClick={openAuth}>Войти <ArrowUpRight size={16}/></button>}
-          <button className="icon-button mobile-menu" onClick={() => setMenu(!menu)} aria-label="Открыть меню">{menu ? <X size={22} /> : <Menu size={22} />}</button>
+          <button className="icon-button mobile-menu" onClick={() => setMenu(!menu)} aria-label={menu ? 'Закрыть меню' : 'Открыть меню'} aria-expanded={menu} aria-controls="main-navigation">{menu ? <X size={22} /> : <Menu size={22} />}</button>
         </div>
       </div>
     </header>
 
-    <main>
+    <main id="main-content" tabIndex={-1}>
       {current === 'home' && <Home categories={categories} featured={featured} loading={loadingHome} onSearch={homeSearch} addToCart={addToCart} toggleCompare={toggleCompare} compare={compare} />}
-      {current === 'catalog' && <Catalog key={searchParams.toString()} categories={categories} addToCart={addToCart} toggleCompare={toggleCompare} compare={compare} />}
+      {current === 'catalog' && <Catalog categories={categories} addToCart={addToCart} toggleCompare={toggleCompare} compare={compare} />}
       {current === 'product' && segments[1] && <ProductDetails id={segments[1]} addToCart={addToCart} toggleCompare={toggleCompare} compare={compare} />}
       {current === 'compare' && <Compare ids={compare} addToCart={addToCart} toggleCompare={toggleCompare} />}
       {current === 'cart' && <Cart cart={cart} onAuth={openAuth} user={user} />}
@@ -123,6 +124,7 @@ export function CompactProduct({ product, addToCart, toggleCompare, selected }: 
 }
 
 function AuthModal({ mode, setMode, onClose, onSuccess }: { mode: 'login' | 'register'; setMode: (mode: 'login' | 'register') => void; onClose: () => void; onSuccess: (user: User) => void }) {
+  const dialogRef = useDialogFocus(true, onClose, '.user-link');
   const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setBusy(true); setError(''); const form = new FormData(event.currentTarget);
@@ -133,7 +135,7 @@ function AuthModal({ mode, setMode, onClose, onSuccess }: { mode: 'login' | 'reg
       else if (mode === 'register') { setMode('login'); setError('Аккаунт создан. Теперь войдите.'); }
     } catch (issue) { setError((issue as Error).message); } finally { setBusy(false); }
   };
-  return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><div className="auth-modal" role="dialog" aria-modal="true" aria-label={mode === 'login' ? 'Вход' : 'Регистрация'}><button className="modal-close icon-button" onClick={onClose} aria-label="Закрыть"><X size={20}/></button><span className="overline">ЛИЧНЫЙ КАБИНЕТ</span><h2>{mode === 'login' ? 'С возвращением' : 'Создать аккаунт'}</h2><p>{mode === 'login' ? 'Войдите, чтобы управлять объектами, заказами и поставками.' : 'Зарегистрируйтесь, чтобы оформлять заказы и вести объекты.'}</p><form onSubmit={submit} className="form-stack">{mode === 'register' && <label>Имя<input name="name" required placeholder="Ваше имя"/></label>}<label>Электронная почта<input name="email" type="email" required placeholder="name@example.ru" autoComplete="email"/></label><label>Пароль<input name="password" type="password" required minLength={mode === 'register' ? 10 : undefined} placeholder={mode === 'register' ? 'Не менее 10 символов' : 'Ваш пароль'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'}/></label>{error && <div className="form-error" role="alert">{error}</div>}<button className="btn btn-dark full" disabled={busy}>{busy ? 'Подождите…' : mode === 'login' ? 'Войти' : 'Зарегистрироваться'} <ArrowRight size={18}/></button></form><div className="auth-switch">{mode === 'login' ? 'Впервые здесь?' : 'Уже есть аккаунт?'} <button className="link-button" onClick={() => {setMode(mode === 'login' ? 'register' : 'login');setError('');}}>{mode === 'login' ? 'Создать аккаунт' : 'Войти'}</button></div><small className="auth-footnote">В демонстрации платежи не проводятся и деньги не списываются.</small></div></div>;
+  return <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}><div ref={dialogRef} tabIndex={-1} className="auth-modal" role="dialog" aria-modal="true" aria-label={mode === 'login' ? 'Вход' : 'Регистрация'}><button className="modal-close icon-button" onClick={onClose} aria-label="Закрыть"><X size={20}/></button><span className="overline">ЛИЧНЫЙ КАБИНЕТ</span><h2>{mode === 'login' ? 'С возвращением' : 'Создать аккаунт'}</h2><p>{mode === 'login' ? 'Войдите, чтобы управлять объектами, заказами и поставками.' : 'Зарегистрируйтесь, чтобы оформлять заказы и вести объекты.'}</p><form onSubmit={submit} className="form-stack">{mode === 'register' && <label>Имя<input name="name" required placeholder="Ваше имя"/></label>}<label>Электронная почта<input name="email" type="email" required placeholder="name@example.ru" autoComplete="email"/></label><label>Пароль<input name="password" type="password" required minLength={mode === 'register' ? 10 : undefined} placeholder={mode === 'register' ? 'Не менее 10 символов' : 'Ваш пароль'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'}/></label>{error && <div className="form-error" role="alert">{error}</div>}<button className="btn btn-dark full" disabled={busy}>{busy ? 'Подождите…' : mode === 'login' ? 'Войти' : 'Зарегистрироваться'} <ArrowRight size={18}/></button></form><div className="auth-switch">{mode === 'login' ? 'Впервые здесь?' : 'Уже есть аккаунт?'} <button className="link-button" onClick={() => {setMode(mode === 'login' ? 'register' : 'login');setError('');}}>{mode === 'login' ? 'Создать аккаунт' : 'Войти'}</button></div><small className="auth-footnote">В демонстрации платежи не проводятся и деньги не списываются.</small></div></div>;
 }
 
 export function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description?: string; action?: React.ReactNode }) { return <div className="page-heading"><div><span className="overline">{eyebrow}</span><h1>{title}</h1>{description && <p>{description}</p>}</div>{action}</div>; }

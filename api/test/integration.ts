@@ -51,10 +51,31 @@ async function main() {
     assert.ok(failed.every((result)=>result.status===401),'ошибки разных адресов не должны блокировать всех покупателей');
     assert.equal((await request('/auth/login','POST',{email:'buyer@example.test',password:'Demo2026!'})).status,201,'общий адрес прокси не блокирует вход');
     const a=await buyer(); const b=await buyer();
+    const cheapFirst=await request('/products?sort=price_asc&limit=100');
+    const expensiveFirst=await request('/products?sort=price_desc&limit=100');
+    assert.equal(cheapFirst.status,200,JSON.stringify(cheapFirst.data));
+    assert.equal(expensiveFirst.status,200,JSON.stringify(expensiveFirst.data));
+    const prices=(rows:Array<{priceFromKopecks:number|null}>)=>rows.map(row=>row.priceFromKopecks).filter((value):value is number=>value!==null);
+    const ascending=prices(cheapFirst.data.items);
+    const descending=prices(expensiveFirst.data.items);
+    assert.ok(ascending.length>1 && new Set(ascending).size>1,'для проверки сортировки нужны товары с разными ценами');
+    assert.equal(descending.length,ascending.length,'обе сортировки возвращают одинаковый набор цен');
+    assert.deepEqual(cheapFirst.data.items.map((row:{id:string})=>row.id).sort(),expensiveFirst.data.items.map((row:{id:string})=>row.id).sort(),'сортировка не меняет набор товаров');
+    assert.deepEqual(ascending,[...ascending].sort((left,right)=>left-right),'цены по возрастанию');
+    assert.deepEqual(descending,[...descending].sort((left,right)=>right-left),'цены по убыванию');
     const product=(await request('/products?q=Цемент')).data.items[0];
     assert.equal(typeof product.categoryId,'string','каталог возвращает ID категории для редактирования');
     const adminLogin=await request('/auth/login','POST',{email:'admin@example.test',password:'Demo2026!'});
     assert.equal(adminLogin.status,201);
+    const withoutOffer=await request('/admin/products','POST',{categoryId:product.categoryId,slug:'test-without-offer',name:'Товар без предложения',unit:'шт.'},adminLogin.cookie);
+    assert.equal(withoutOffer.status,201,JSON.stringify(withoutOffer.data));
+    for(const direction of ['price_asc','price_desc']) {
+      const sorted=await request(`/products?sort=${direction}&limit=100`);
+      assert.equal(sorted.status,200);
+      assert.equal(sorted.data.items.at(-1).id,withoutOffer.data.id,'товар без цены находится после товаров с ценой');
+      assert.equal(sorted.data.items.at(-1).priceFromKopecks,null);
+    }
+    await pool.query('DELETE FROM products WHERE id=$1',[withoutOffer.data.id]);
     assert.equal((await request(`/admin/products/${product.id}`,'PATCH',{description:''},adminLogin.cookie)).status,200,'администратор может очистить описание');
     assert.equal((await request(`/products/${product.id}`)).data.description,'');
     assert.equal((await request(`/admin/products/${product.id}`,'PATCH',{description:product.description},adminLogin.cookie)).status,200);
@@ -144,7 +165,7 @@ async function main() {
     const finishes=await Promise.all(multi.data.deliveries.map((delivery: {id:string})=>request(`/driver/deliveries/${delivery.id}/events`,'POST',{status:'delivered'},driver)));
     assert.ok(finishes.every((result)=>result.status===201),JSON.stringify(finishes));
     assert.equal((await request(`/orders/${multi.data.id}`,'GET',undefined,a)).data.status,'delivered','заказ закрывается после параллельного завершения поставок');
-    console.log('PASS: вход без общего IP-лимита, снимок единицы, идемпотентность, резерв, права, позиции объекта, конкурентные заказы и поставки');
+    console.log('PASS: вход, сортировка каталога, снимок единицы, идемпотентность, резерв, права, позиции объекта, конкурентные заказы и поставки');
   } finally { child.kill(); await pool.end(); }
 }
 main().catch((error)=>{console.error(error);process.exitCode=1;});
