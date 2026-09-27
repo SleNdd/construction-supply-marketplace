@@ -18,6 +18,7 @@ docs/graphic-sheets/*.png
 docs/graphic-sheets/*.py
 docs/graphic-sheets/*.mjs
 *.log
+~$*.docx
 *.exe
 .DS_Store
 Thumbs.db
