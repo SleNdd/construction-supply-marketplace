@@ -26,8 +26,9 @@
 
 ## Заказ и доставка
 
-- `POST /orders` — `{items:[{offerId,quantity}],address,requestedDate?,projectId?}`; атомарно проверяет и резервирует остатки, фиксирует цены и разбивает заказ на поставки по поставщикам. Повтор по `Idempotency-Key` не создаёт новый заказ.
+- `POST /orders` — `{items:[{offerId,quantity}],address,requestedDate?,projectId?}`; атомарно проверяет и резервирует остатки, фиксирует цены и разбивает заказ на поставки по поставщикам. Заголовок `Idempotency-Key` обязателен. Повтор с тем же телом возвращает прежний заказ; с другим телом отклоняется.
 - `GET /orders`, `GET /orders/:id` — история и детали покупателя.
+- `POST /orders/:id/cancel` — отмена неоплаченного заказа владельцем с восстановлением резерва. Неоплаченный резерв также истекает через 30 минут.
 - `POST /orders/:id/demo-payment` — учебное подтверждение оплаты без списания денег.
 - `GET /dispatch/deliveries`, `PATCH /dispatch/deliveries/:id` — планирование и назначение водителя.
 - `GET /driver/deliveries`, `POST /driver/deliveries/:id/events` — просмотр рейса и допустимые переходы статуса.

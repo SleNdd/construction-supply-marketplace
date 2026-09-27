@@ -1,0 +1,34 @@
+{
+  "name": "objectmarket-web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 0.0.0.0",
+    "build": "next build",
+    "start": "next start --hostname 0.0.0.0",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@2gis/mapgl": "^1.49.0",
+    "@fontsource/manrope": "^5.2.8",
+    "@fontsource/onest": "^5.2.8",
+    "lucide-react": "^0.468.0",
+    "next": "^15.2.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "read-excel-file": "^5.8.8"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.0.12",
+    "@types/react-dom": "^19.0.4",
+    "eslint": "^9.24.0",
+    "eslint-config-next": "^15.2.4",
+    "typescript": "^5.8.3"
+  },
+  "overrides": {
+    "postcss": "^8.5.28"
+  }
+}

@@ -29,7 +29,7 @@
 17. [PostgreSQL 17. Управление изоляцией транзакций](https://www.postgresql.org/docs/17/transaction-iso.html).
 18. [PostgreSQL 17. Явные блокировки](https://www.postgresql.org/docs/17/explicit-locking.html).
 19. [Docker. Документация Compose](https://docs.docker.com/compose/).
-20. [OpenAPI Specification 3.1.1](https://spec.openapis.org/oas/v3.1.1.html).
+20. [OpenAPI Specification 3.0.3](https://spec.openapis.org/oas/v3.0.3.html).
 21. [W3C. Web Content Accessibility Guidelines 2.2](https://www.w3.org/TR/WCAG22/).
 
 Материалы площадок из списка использованы при сравнении пользовательских сценариев.

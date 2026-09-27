@@ -9,6 +9,14 @@ dist/
 build/
 *.tsbuildinfo
 tmp/
+docs/student-review/
+docs/presentation/.build/
+docs/presentation/assets/
+docs/presentation/build.mjs
+docs/presentation/capture.mjs
+docs/graphic-sheets/*.png
+docs/graphic-sheets/*.py
+docs/graphic-sheets/*.mjs
 *.log
 *.exe
 .DS_Store

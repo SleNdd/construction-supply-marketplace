@@ -1,0 +1,469 @@
+openapi: 3.0.3
+info:
+  title: ОбъектМаркет API
+  version: 1.0.0
+  description: 'API учебной системы закупки строительных материалов. Суммы — в копейках; реальные платежи и GPS отсутствуют. Демонстрационная доставка доступна только для строк адреса вида «Астрахань, улица, дом» или «г. Астрахань, улица, дом».'
+servers:
+  - url: /api/v1
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: om_session
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: {type: string}
+        message: {type: string}
+    User:
+      type: object
+      required: [id, name, email, role]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        email: {type: string, format: email}
+        role: {type: string, enum: [buyer, supplier, dispatcher, driver, admin]}
+    CartItem:
+      type: object
+      required: [offerId, quantity]
+      properties:
+        offerId: {type: string, format: uuid}
+        quantity: {type: integer, minimum: 1, maximum: 10000}
+    Purchase:
+      type: object
+      required: [items, address]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: {$ref: '#/components/schemas/CartItem'}
+        address: {type: string, description: 'Учебный адрес: «Астрахань, улица, дом» или «г. Астрахань, улица, дом»'}
+        requestedDate: {type: string, format: date}
+        projectId: {type: string, format: uuid}
+    Product:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        slug: {type: string}
+        name: {type: string}
+        category: {type: string}
+        unit: {type: string}
+        imageUrl: {type: string, nullable: true}
+        description: {type: string}
+        specs: {type: object, additionalProperties: true}
+        priceFromKopecks: {type: integer, nullable: true}
+    Offer:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        supplierId: {type: string, format: uuid}
+        supplierName: {type: string}
+        warehouseId: {type: string, format: uuid}
+        priceKopecks: {type: integer}
+        stock: {type: integer}
+        deliveryDays: {type: integer}
+        deliveryCostKopecks: {type: integer}
+    Order:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        status: {type: string, enum: [awaiting_payment, paid, in_progress, delivered, cancelled, expired]}
+        reservationExpiresAt: {type: string, format: date-time, nullable: true, description: 'Через 30 минут неоплаченный резерв освобождается'}
+        itemsTotalKopecks: {type: integer}
+        deliveryTotalKopecks: {type: integer}
+        totalKopecks: {type: integer}
+        items: {type: array, items: {type: object}}
+        deliveries: {type: array, items: {type: object}}
+        paymentMode: {type: string, enum: [demo]}
+        trackingMode: {type: string, enum: [demo]}
+    Calculation:
+      type: object
+      properties:
+        formula: {type: string}
+        calculatedConsumption: {type: number}
+        consumptionUnit: {type: string}
+        packages: {type: integer}
+        packSize: {type: number}
+  responses:
+    Error:
+      description: Ошибка с кодом и сообщением
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+paths:
+  /health:
+    get:
+      summary: Проверка работоспособности API
+      responses: {'200': {description: API доступен}}
+  /auth/register:
+    post:
+      summary: Регистрация покупателя и создание сеанса
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: {type: string}
+                email: {type: string, format: email}
+                password: {type: string, minLength: 10}
+      responses: {'201': {description: Пользователь и HttpOnly cookie}, '409': {$ref: '#/components/responses/Error'}}
+  /auth/login:
+    post:
+      summary: Вход
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: {type: string, format: email}
+                password: {type: string}
+      responses: {'201': {description: Пользователь и HttpOnly cookie}, '401': {$ref: '#/components/responses/Error'}}
+  /auth/me:
+    get:
+      summary: Текущий пользователь
+      security: [{session: []}]
+      responses: {'200': {description: Пользователь}, '401': {$ref: '#/components/responses/Error'}}
+  /auth/logout:
+    post:
+      summary: Завершить сеанс
+      security: [{session: []}]
+      responses: {'201': {description: Сеанс завершён}}
+  /categories:
+    get:
+      summary: Категории товаров
+      responses: {'200': {description: Список категорий}}
+  /products:
+    get:
+      summary: Поиск и фильтрация товаров
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+        - {name: category, in: query, schema: {type: string}}
+        - {name: sort, in: query, schema: {type: string, enum: [name, price_asc, price_desc]}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200':
+          description: Страница товаров
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/Product'}}
+                  page: {type: integer}
+                  total: {type: integer}
+  /products/{id}:
+    get:
+      summary: Товар и предложения поставщиков
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses: {'200': {description: Карточка товара с offers}, '404': {$ref: '#/components/responses/Error'}}
+  /supplier/offers:
+    get:
+      summary: Собственные предложения поставщика
+      security: [{session: []}]
+      responses: {'200': {description: Список предложений}}
+    post:
+      summary: Создать предложение
+      security: [{session: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, warehouseId, priceKopecks, stock, deliveryDays, deliveryCostKopecks]
+              properties:
+                productId: {type: string, format: uuid}
+                warehouseId: {type: string, format: uuid}
+                priceKopecks: {type: integer, minimum: 1}
+                stock: {type: integer, minimum: 0}
+                deliveryDays: {type: integer, minimum: 0}
+                deliveryCostKopecks: {type: integer, minimum: 0}
+      responses: {'201': {description: Новое предложение}, '403': {$ref: '#/components/responses/Error'}}
+  /supplier/offers/{id}:
+    patch:
+      summary: Изменить своё предложение
+      security: [{session: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                priceKopecks: {type: integer, minimum: 1}
+                stock: {type: integer, minimum: 0}
+                deliveryDays: {type: integer, minimum: 0}
+                deliveryCostKopecks: {type: integer, minimum: 0}
+                active: {type: boolean}
+      responses: {'200': {description: Изменённое предложение}, '404': {$ref: '#/components/responses/Error'}}
+  /supplier/warehouses:
+    get:
+      summary: Склады текущего поставщика
+      security: [{session: []}]
+      responses: {'200': {description: Список складов}}
+  /admin/categories:
+    post:
+      summary: Создать категорию, роль admin
+      security: [{session: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: {type: string}
+                slug: {type: string}
+      responses: {'201': {description: Категория создана}}
+  /admin/categories/{id}:
+    patch:
+      summary: Изменить категорию, роль admin
+      security: [{session: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses: {'200': {description: Категория изменена}}
+  /admin/products:
+    post:
+      summary: Создать товар, роль admin
+      security: [{session: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [categoryId, slug, name, unit]
+              properties:
+                categoryId: {type: string, format: uuid}
+                slug: {type: string}
+                name: {type: string}
+                unit: {type: string}
+                imageUrl: {type: string, nullable: true}
+                description: {type: string}
+                specs: {type: object, additionalProperties: true}
+      responses: {'201': {description: Товар создан}}
+  /admin/products/{id}:
+    patch:
+      summary: Изменить товар, роль admin
+      security: [{session: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses: {'200': {description: Товар изменён}}
+  /quotes:
+    post:
+      summary: Рассчитать стоимость без резервирования
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/Purchase'}}}
+      responses: {'201': {description: 'Строки, итоги, недоступные позиции, предупреждения и zoneAvailable для учебной зоны'}}
+  /projects:
+    get:
+      summary: Объекты покупателя
+      security: [{session: []}]
+      responses: {'200': {description: Список объектов}}
+    post:
+      summary: Создать объект
+      security: [{session: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, address]
+              properties:
+                name: {type: string}
+                address: {type: string}
+                stages: {type: array, items: {type: object}}
+      responses: {'201': {description: Новый объект}}
+  /projects/{id}:
+    parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      summary: Объект и список потребностей
+      security: [{session: []}]
+      responses: {'200': {description: Объект}, '404': {$ref: '#/components/responses/Error'}}
+    patch:
+      summary: Изменить свой объект
+      security: [{session: []}]
+      responses: {'200': {description: Изменённый объект}}
+  /projects/{id}/items:
+    post:
+      summary: Добавить позицию потребности
+      security: [{session: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, quantity]
+              properties:
+                productId: {type: string, format: uuid}
+                quantity: {type: integer, minimum: 1}
+                stageDate: {type: string, format: date}
+      responses: {'201': {description: Позиция добавлена}}
+  /calculators/tiles:
+    post:
+      summary: Расчёт плитки с округлением до упаковки
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [areaM2, tileAreaM2, tilesPerPack]
+              properties:
+                areaM2: {type: number, minimum: 0, exclusiveMinimum: true}
+                tileAreaM2: {type: number, minimum: 0, exclusiveMinimum: true}
+                tilesPerPack: {type: integer, minimum: 1}
+                wastePercent: {type: number, minimum: 0, default: 10}
+      responses: {'201': {description: Формула, расход и число упаковок, content: {application/json: {schema: {$ref: '#/components/schemas/Calculation'}}}}}
+  /calculators/paint:
+    post:
+      summary: Расчёт краски с учётом слоёв
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [areaM2, rateLPerM2, packSizeL]
+              properties:
+                areaM2: {type: number, minimum: 0, exclusiveMinimum: true}
+                rateLPerM2: {type: number, minimum: 0, exclusiveMinimum: true}
+                coats: {type: integer, minimum: 1, default: 2}
+                packSizeL: {type: number, minimum: 0, exclusiveMinimum: true}
+                wastePercent: {type: number, minimum: 0, default: 10}
+      responses: {'201': {description: Формула, расход и число упаковок, content: {application/json: {schema: {$ref: '#/components/schemas/Calculation'}}}}}
+  /calculators/dry-mix:
+    post:
+      summary: Расчёт сухой смеси по толщине слоя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [areaM2, layerMm, rateKgPerM2Mm, packSizeKg]
+              properties:
+                areaM2: {type: number, minimum: 0, exclusiveMinimum: true}
+                layerMm: {type: number, minimum: 0, exclusiveMinimum: true}
+                rateKgPerM2Mm: {type: number, minimum: 0, exclusiveMinimum: true}
+                packSizeKg: {type: number, minimum: 0, exclusiveMinimum: true}
+                wastePercent: {type: number, minimum: 0, default: 10}
+      responses: {'201': {description: Формула, расход и число упаковок, content: {application/json: {schema: {$ref: '#/components/schemas/Calculation'}}}}}
+  /orders:
+    get:
+      summary: Заказы покупателя
+      security: [{session: []}]
+      responses: {'200': {description: История заказов}}
+    post:
+      summary: Создать заказ и транзакционно зарезервировать остатки
+      security: [{session: []}]
+      parameters: [{name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9._:-]+$'}, description: 'Повтор с тем же ключом и телом возвращает тот же заказ; другое тело — 409'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/Purchase'}}}
+      responses: {'201': {description: Заказ и поставки по поставщикам, резерв на 30 минут}, '400': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}
+  /orders/{id}:
+    get:
+      summary: Собственный заказ
+      security: [{session: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: Заказ, позиции и поставки, content: {application/json: {schema: {$ref: '#/components/schemas/Order'}}}}
+        '404': {$ref: '#/components/responses/Error'}
+  /orders/{id}/demo-payment:
+    post:
+      summary: Учебное подтверждение оплаты без списания средств
+      security: [{session: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses: {'201': {description: Обновлённый заказ}}
+  /orders/{id}/cancel:
+    post:
+      summary: Отменить неоплаченный заказ и восстановить остатки
+      description: Повторная отмена безопасна. Оплаченный заказ отменить нельзя. Истёкший резерв получает статус expired.
+      security: [{session: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses: {'201': {description: Обновлённый заказ}, '404': {$ref: '#/components/responses/Error'}, '409': {$ref: '#/components/responses/Error'}}
+  /dispatch/deliveries:
+    get:
+      summary: План поставок
+      security: [{session: []}]
+      responses: {'200': {description: Список поставок}}
+  /dispatch/drivers:
+    get:
+      summary: Доступные водители для назначения
+      security: [{session: []}]
+      responses: {'200': {description: 'Массив объектов {id, name}'}}
+  /dispatch/deliveries/{id}:
+    patch:
+      summary: Назначить водителя и дату
+      security: [{session: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [driverId]
+              properties:
+                driverId: {type: string, format: uuid}
+                scheduledDate: {type: string, format: date}
+      responses: {'200': {description: Назначенная поставка}}
+  /driver/deliveries:
+    get:
+      summary: Рейсы текущего водителя
+      security: [{session: []}]
+      responses: {'200': {description: Список рейсов}}
+  /driver/deliveries/{id}/events:
+    post:
+      summary: Следующий статус учебного рейса
+      description: 'Допустимы assigned → picked_up → in_transit → delivered.'
+      security: [{session: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: {type: string, enum: [picked_up, in_transit, delivered]}
+      responses: {'201': {description: Новый статус}, '409': {$ref: '#/components/responses/Error'}}
+  /reports/summary:
+    get:
+      summary: Сводка администратора по учебным данным
+      security: [{session: []}]
+      responses: {'200': {description: Количество и суммы заказов, статусы поставок}}
+  /geo/config:
+    get:
+      summary: Режим карты и публичный ключ MapGL при наличии
+      responses: {'200': {description: Источник карты}}
+  /geo/suggest:
+    get:
+      summary: Адресные подсказки DaData или локального демо
+      parameters: [{name: q, in: query, required: true, schema: {type: string, minLength: 2}}]
+      responses: {'200': {description: source и массив items}, '502': {$ref: '#/components/responses/Error'}}
+  /geo/route:
+    get:
+      summary: Маршрут 2ГИС или схематический маршрут демо
+      parameters:
+        - {name: fromLon, in: query, required: true, schema: {type: number}}
+        - {name: fromLat, in: query, required: true, schema: {type: number}}
+        - {name: toLon, in: query, required: true, schema: {type: number}}
+        - {name: toLat, in: query, required: true, schema: {type: number}}
+      responses: {'200': {description: 'Источник, координаты [долгота, широта], дистанция и время'}, '502': {$ref: '#/components/responses/Error'}}

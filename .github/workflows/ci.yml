@@ -27,8 +27,10 @@ jobs:
         working-directory: api
     env:
       DATABASE_URL: postgres://obektmarket:test-password@localhost:5432/obektmarket_test
+      TEST_DATABASE_URL: postgres://obektmarket:test-password@localhost:5432/obektmarket_test
       API_PORT: 4000
       CORS_ORIGIN: http://localhost:3000
+      DEMO_SEED: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,6 +42,16 @@ jobs:
       - run: npm run migrate
       - run: npm run test
       - run: npm run build
+      - run: npm run test:integration
+      - run: npm run seed
+      - name: Сквозная проверка API
+        run: |
+          npm run start:prod > /tmp/obektmarket-api.log 2>&1 &
+          for i in {1..30}; do
+            if curl --fail --silent http://localhost:4000/api/v1/health > /dev/null; then break; fi
+            sleep 1
+          done
+          npm run smoke
 
   web:
     runs-on: ubuntu-latest

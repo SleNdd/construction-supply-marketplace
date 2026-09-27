@@ -20,27 +20,36 @@ services:
       NODE_ENV: production
       API_PORT: 4000
       DATABASE_URL: postgres://${POSTGRES_USER:-obektmarket}:${POSTGRES_PASSWORD:-local-demo-password}@db:5432/${POSTGRES_DB:-obektmarket}
-      SESSION_SECRET: ${SESSION_SECRET:-local-demo-session-secret-change-me}
-      CORS_ORIGIN: http://localhost:3000
+      CORS_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      DEMO_SEED: ${DEMO_SEED:-false}
       DADATA_API_KEY: ${DADATA_API_KEY:-}
-      DADATA_SECRET_KEY: ${DADATA_SECRET_KEY:-}
       GIS_ROUTING_KEY: ${GIS_ROUTING_KEY:-}
     depends_on:
       db:
         condition: service_healthy
-    command: ["sh", "-c", "npm run migrate && npm run seed && npm run start:prod"]
+    command: ["sh", "-c", "set -e; npm run migrate; if [ \"$$DEMO_SEED\" = \"true\" ]; then npm run seed; fi; npm run start:prod"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
   web:
-    build: ./web
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_MAPGL_KEY: ${GIS_MAP_KEY:-}
     environment:
       NODE_ENV: production
       API_INTERNAL_URL: http://api:4000
-      NEXT_PUBLIC_MAPGL_KEY: ${GIS_MAP_KEY:-}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
     ports:
-      - "3000:3000"
+      - "${WEB_BIND_IP:-127.0.0.1}:3000:3000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
