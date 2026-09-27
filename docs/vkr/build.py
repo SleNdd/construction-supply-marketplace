@@ -188,7 +188,7 @@ def create():
     for name, indent in (("TOC 1", 0), ("TOC 2", 0.55)):
         toc = styles[name] if name in styles else styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH)
         toc.font.name = "Times New Roman"
-        toc.font.size = Pt(10.5)
+        toc.font.size = Pt(10)
         toc.font.color.rgb = RGBColor(0, 0, 0)
         toc.paragraph_format.line_spacing = 1.0
         toc.paragraph_format.space_before = Pt(0)
@@ -266,9 +266,9 @@ def create():
                 continue
             if title == "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ":
                 in_bibliography = True
+            heading = document.add_heading(title, level=1)
             if title in {"ВВЕДЕНИЕ", "ЗАКЛЮЧЕНИЕ", "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"} or title.startswith(("1 ", "2 ", "3 ", "4 ", "ПРИЛОЖЕНИЕ")):
-                document.add_page_break()
-            document.add_heading(title, level=1)
+                heading.paragraph_format.page_break_before = True
             continue
         if line.startswith("## "):
             document.add_heading(line[3:], level=2)
