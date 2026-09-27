@@ -65,7 +65,7 @@ export class AdminController {
     if (body.name!==undefined) add('name',textField(body.name,'name',200));
     if (body.unit!==undefined) add('unit',textField(body.unit,'unit',30));
     if (body.imageUrl!==undefined) add('image_url',imageUrl(body.imageUrl));
-    if (body.description!==undefined) add('description',textField(body.description,'description',2000));
+    if (body.description!==undefined) add('description',body.description===''?'':textField(body.description,'description',2000));
     if (body.specs!==undefined) add('specs',specs(body.specs));
     if (!columns.length) throw new ApiError(400,'invalid_input','Нет полей для изменения');
     values.push(id);

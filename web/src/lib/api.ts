@@ -1,9 +1,9 @@
 export type User = { id: string; name: string; email: string; role: 'buyer' | 'supplier' | 'dispatcher' | 'driver' | 'admin' };
 export type Category = { id: string; name: string; slug: string };
 export type Offer = { id: string; supplierId: string; supplierName: string; warehouseId: string; priceKopecks: number; stock: number; deliveryDays: number; deliveryCostKopecks: number };
-export type Product = { id: string; slug: string; name: string; category: string | Category; unit: string; imageUrl?: string; priceFromKopecks: number; description?: string; specs?: Record<string, string | number>; offers?: Offer[] };
+export type Product = { id: string; slug: string; name: string; category: string | Category; categoryId?: string; unit: string; imageUrl?: string; priceFromKopecks: number; description?: string; specs?: Record<string, string | number>; offers?: Offer[] };
 export type CartItem = { offerId: string; quantity: number; productId: string; productName: string; supplierName: string; priceKopecks: number; unit: string };
-export type Project = { id: string; name: string; address: string; stages?: unknown[]; items?: Array<{ id?: string; productId: string; productName?: string; unit?: string; quantity: number; product?: Product; stageDate?: string }> };
+export type Project = { id: string; name: string; address: string; itemCount?: number; stages?: unknown[]; items?: Array<{ id?: string; productId: string; productName?: string; unit?: string; quantity: number; product?: Product; stageDate?: string | null }> };
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api/v1${path}`, {

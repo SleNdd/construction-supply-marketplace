@@ -4,13 +4,14 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, ShoppingBag, Truck } from 'lucide-react';
 import { api, type CartItem, type Offer, type Product, type Project, money, quantityUnit } from '@/lib/api';
+import { readCart } from '@/lib/storage';
 
 type Need = NonNullable<Project['items']>[number];
 type Quote = { itemsTotalKopecks:number; deliveryTotalKopecks:number; totalKopecks:number; unavailable:Array<{offerId:string;reason:string}>; warnings:string[]; pricingNote:string; zoneAvailable:boolean };
 
 function needKey(item:Need,index:number) { return item.id || `${item.productId}-${index}`; }
 
-function meetsStage(offer:Offer, stageDate?:string) {
+function meetsStage(offer:Offer, stageDate?:string|null) {
   if (!stageDate) return true;
   const earliest = new Date();
   earliest.setUTCDate(earliest.getUTCDate()+offer.deliveryDays);
@@ -66,11 +67,13 @@ export function ProcurementPlan({project,addToCart}:{project:Project;addToCart:(
       const product=products[need.productId];
       addToCart({offerId:offer.id,quantity:need.quantity,productId:need.productId,productName:product?.name||need.productName||'Материал',supplierName:offer.supplierName,priceKopecks:offer.priceKopecks,unit:product?.unit||need.unit||'ед.'});
     }
+    const items=readCart().map(({offerId,quantity})=>({offerId,quantity})).sort((a,b)=>a.offerId.localeCompare(b.offerId));
+    sessionStorage.setItem('objectmarket-project-checkout',JSON.stringify({projectId:project.id,address:project.address,items}));
   };
 
   return <section className="workspace-panel procurement-plan">
     <div className="panel-heading"><div><span className="overline">ПЛАН ЗАКУПКИ</span><h2>Предложения для объекта</h2></div><Truck size={23}/></div>
-    <p className="muted">Предложения предварительно выбираются по цене позиции с доставкой. Проверяются количество и срок каждого материала. Итоговая доставка пересчитывается по поставщикам.</p>
+    <p className="muted">Предложения предварительно выбираются по цене позиции с доставкой. План учитывает количество и дату этапа, но не резервирует срок. При оформлении проверьте желаемую дату: итоговая доставка пересчитывается по поставщикам.</p>
     {loading?<div className="loading-row">Подбираем предложения…</div>:needs.length?<div className="plan-offers">{needs.map((need,index)=>{
       const product=products[need.productId];
       const available=(product?.offers||[]).filter(offer=>offer.stock>=need.quantity&&meetsStage(offer,need.stageDate));

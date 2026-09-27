@@ -51,6 +51,7 @@ components:
         slug: {type: string}
         name: {type: string}
         category: {type: string}
+        categoryId: {type: string, format: uuid}
         unit: {type: string}
         imageUrl: {type: string, nullable: true}
         description: {type: string}
@@ -270,7 +271,22 @@ paths:
     get:
       summary: Объекты покупателя
       security: [{session: []}]
-      responses: {'200': {description: Список объектов}}
+      responses:
+        '200':
+          description: Список объектов с числом позиций в каждом
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: {type: string, format: uuid}
+                    name: {type: string}
+                    address: {type: string}
+                    stages: {type: array, items: {type: object}}
+                    createdAt: {type: string, format: date-time}
+                    itemCount: {type: integer, minimum: 0}
     post:
       summary: Создать объект
       security: [{session: []}]
@@ -313,6 +329,34 @@ paths:
                 quantity: {type: integer, minimum: 1}
                 stageDate: {type: string, format: date}
       responses: {'201': {description: Позиция добавлена}}
+  /projects/{id}/items/{itemId}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: itemId, in: path, required: true, schema: {type: string, format: uuid}}
+    patch:
+      summary: Изменить количество или дату потребности своего объекта
+      security: [{session: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              additionalProperties: false
+              properties:
+                quantity: {type: integer, minimum: 1}
+                stageDate: {type: string, format: date, nullable: true}
+      responses:
+        '200': {description: Изменённая позиция}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+    delete:
+      summary: Удалить позицию потребности своего объекта
+      security: [{session: []}]
+      responses:
+        '204': {description: Позиция удалена}
+        '404': {$ref: '#/components/responses/Error'}
   /calculators/tiles:
     post:
       summary: Расчёт плитки с округлением до упаковки

@@ -19,12 +19,12 @@ export class CatalogController {
     if (!sortSql[sort]) throw new ApiError(400,'invalid_input','Неизвестная сортировка');
     const filter = "WHERE ($1='' OR p.name ILIKE '%'||$1||'%' OR p.description ILIKE '%'||$1||'%') AND ($2='' OR c.slug=$2 OR c.id::text=$2)";
     const total = await this.db.one<{count:string}>(`SELECT count(*)::text AS count FROM products p JOIN categories c ON c.id=p.category_id ${filter}`,[q,category]);
-    const items = await this.db.rows(`SELECT p.id,p.slug,p.name,c.name AS category,p.unit,p.image_url AS "imageUrl",p.description,p.specs,min(o.price_kopecks)::int AS "priceFromKopecks" FROM products p JOIN categories c ON c.id=p.category_id LEFT JOIN offers o ON o.product_id=p.id AND o.active ${filter} GROUP BY p.id,c.name ORDER BY ${sortSql[sort]} LIMIT $3 OFFSET $4`,[q,category,limit,(page-1)*limit]);
+    const items = await this.db.rows(`SELECT p.id,p.slug,p.name,p.category_id AS "categoryId",c.name AS category,p.unit,p.image_url AS "imageUrl",p.description,p.specs,min(o.price_kopecks)::int AS "priceFromKopecks" FROM products p JOIN categories c ON c.id=p.category_id LEFT JOIN offers o ON o.product_id=p.id AND o.active ${filter} GROUP BY p.id,c.name ORDER BY ${sortSql[sort]} LIMIT $3 OFFSET $4`,[q,category,limit,(page-1)*limit]);
     return {items,page,total:Number(total?.count||0)};
   }
 
   @Get('products/:id') async product(@Param('id') id: string) {
-    const product = await this.db.one('SELECT p.id,p.slug,p.name,c.name AS category,p.unit,p.image_url AS "imageUrl",p.description,p.specs FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id::text=$1 OR p.slug=$1',[id]);
+    const product = await this.db.one('SELECT p.id,p.slug,p.name,p.category_id AS "categoryId",c.name AS category,p.unit,p.image_url AS "imageUrl",p.description,p.specs FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id::text=$1 OR p.slug=$1',[id]);
     if (!product) throw new ApiError(404,'not_found','Товар не найден');
     const offers = await this.db.rows('SELECT o.id,o.supplier_id AS "supplierId",s.name AS "supplierName",o.warehouse_id AS "warehouseId",w.name AS "warehouseName",o.price_kopecks AS "priceKopecks",o.stock,o.delivery_days AS "deliveryDays",o.delivery_cost_kopecks AS "deliveryCostKopecks" FROM offers o JOIN suppliers s ON s.id=o.supplier_id JOIN warehouses w ON w.id=o.warehouse_id WHERE o.product_id=$1 AND o.active ORDER BY o.price_kopecks',[product.id]);
     return {...product,offers};

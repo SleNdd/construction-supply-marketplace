@@ -17,7 +17,8 @@ function script(path:string,vars:NodeJS.ProcessEnv=env) {
 
 async function request(path:string,method='GET',body?:unknown,cookie?:string,key?:string) {
   const response=await fetch(base+path,{method,headers:{...(body?{'Content-Type':'application/json'}:{}),...(cookie?{Cookie:cookie}:{}),...(key?{'Idempotency-Key':key}:{})},body:body?JSON.stringify(body):undefined});
-  return {status:response.status,data:await response.json() as any,cookie:response.headers.get('set-cookie')?.split(';')[0]};
+  const text=await response.text();
+  return {status:response.status,data:text?JSON.parse(text) as any:null,cookie:response.headers.get('set-cookie')?.split(';')[0]};
 }
 
 async function buyer() {
@@ -51,6 +52,12 @@ async function main() {
     assert.equal((await request('/auth/login','POST',{email:'buyer@example.test',password:'Demo2026!'})).status,201,'общий адрес прокси не блокирует вход');
     const a=await buyer(); const b=await buyer();
     const product=(await request('/products?q=Цемент')).data.items[0];
+    assert.equal(typeof product.categoryId,'string','каталог возвращает ID категории для редактирования');
+    const adminLogin=await request('/auth/login','POST',{email:'admin@example.test',password:'Demo2026!'});
+    assert.equal(adminLogin.status,201);
+    assert.equal((await request(`/admin/products/${product.id}`,'PATCH',{description:''},adminLogin.cookie)).status,200,'администратор может очистить описание');
+    assert.equal((await request(`/products/${product.id}`)).data.description,'');
+    assert.equal((await request(`/admin/products/${product.id}`,'PATCH',{description:product.description},adminLogin.cookie)).status,200);
     const offerId=(await request(`/products/${product.id}`)).data.offers[0].id;
     const stock=Number((await pool.query<{stock:number}>('SELECT stock FROM offers WHERE id=$1',[offerId])).rows[0].stock);
     const purchase={items:[{offerId,quantity:2}],address:'Астрахань, ул. Савушкина, 6'};
@@ -86,6 +93,29 @@ async function main() {
     assert.equal(Number((await pool.query<{stock:number}>('SELECT stock FROM offers WHERE id=$1',[offerId])).rows[0].stock),stock-1,'истёкший резерв восстановлен');
     const project=await request('/projects','POST',{name:'Свой объект',address:'Астрахань, ул. Савушкина, 6'},a);
     assert.equal((await request(`/projects/${project.data.id}`,'GET',undefined,b)).status,404,'чужой объект скрыт');
+    const listBefore=await request('/projects','GET',undefined,a);
+    assert.equal(listBefore.data.find((entry:{id:string})=>entry.id===project.data.id).itemCount,0);
+    const projectItem=await request(`/projects/${project.data.id}/items`,'POST',{productId,quantity:2,stageDate:'2026-10-01'},a);
+    assert.equal(projectItem.status,201,JSON.stringify(projectItem.data));
+    const itemPath=`/projects/${project.data.id}/items/${projectItem.data.id}`;
+    assert.equal((await request('/projects','GET',undefined,a)).data.find((entry:{id:string})=>entry.id===project.data.id).itemCount,1);
+    assert.equal((await request(itemPath,'PATCH',{quantity:3},b)).status,404,'чужую позицию нельзя изменить');
+    assert.equal((await request(itemPath,'PATCH',{productId},b)).status,404,'чужая позиция скрыта и при ошибочном теле');
+    assert.equal((await request(itemPath,'DELETE',undefined,b)).status,404,'чужую позицию нельзя удалить');
+    assert.equal((await request(itemPath,'PATCH',{productId},a)).status,400,'товар позиции нельзя заменить');
+    assert.equal((await request(itemPath,'PATCH',{quantity:0},a)).status,400);
+    assert.equal((await request(itemPath,'PATCH',{stageDate:'2026-02-30'},a)).status,400);
+    const editedItem=await request(itemPath,'PATCH',{quantity:4,stageDate:'2026-11-02'},a);
+    assert.equal(editedItem.status,200,JSON.stringify(editedItem.data));
+    assert.equal(editedItem.data.quantity,4);
+    assert.equal(editedItem.data.stageDate,'2026-11-02');
+    assert.equal((await request(itemPath,'PATCH',{stageDate:null},a)).data.stageDate,null,'дату можно очистить');
+    assert.equal((await request(`/projects/${project.data.id}`,'GET',undefined,a)).data.items[0].quantity,4);
+    assert.equal((await request(itemPath,'DELETE',undefined,a)).status,204);
+    assert.equal((await request(itemPath,'DELETE',undefined,a)).status,404,'повторное удаление не меняет данные');
+    assert.equal((await request('/projects','GET',undefined,a)).data.find((entry:{id:string})=>entry.id===project.data.id).itemCount,0);
+    assert.equal(Number((await pool.query<{stock:number}>('SELECT stock FROM offers WHERE id=$1',[offerId])).rows[0].stock),stock-1,'изменение потребности не резервирует товар');
+    assert.equal((await request(`/orders/${paid.data.id}`,'GET',undefined,a)).data.status,'paid','редактирование потребности не меняет заказ');
     const suffix=randomUUID().slice(0,8);
     const category=(await pool.query<{id:string}>('SELECT id FROM categories LIMIT 1')).rows[0].id;
     const supplier=(await pool.query<{id:string}>('SELECT id FROM suppliers LIMIT 1')).rows[0].id;
@@ -114,7 +144,7 @@ async function main() {
     const finishes=await Promise.all(multi.data.deliveries.map((delivery: {id:string})=>request(`/driver/deliveries/${delivery.id}/events`,'POST',{status:'delivered'},driver)));
     assert.ok(finishes.every((result)=>result.status===201),JSON.stringify(finishes));
     assert.equal((await request(`/orders/${multi.data.id}`,'GET',undefined,a)).data.status,'delivered','заказ закрывается после параллельного завершения поставок');
-    console.log('PASS: вход без общего IP-лимита, снимок единицы, идемпотентность, резерв, права, конкурентные заказы и поставки');
+    console.log('PASS: вход без общего IP-лимита, снимок единицы, идемпотентность, резерв, права, позиции объекта, конкурентные заказы и поставки');
   } finally { child.kill(); await pool.end(); }
 }
 main().catch((error)=>{console.error(error);process.exitCode=1;});

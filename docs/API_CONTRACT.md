@@ -12,7 +12,7 @@
 ## Каталог и предложения
 
 - `GET /categories` — список `{id, name, slug}`.
-- `GET /products?q=&category=&sort=&page=&limit=` — `{items, page, total}`. Элемент: `{id,slug,name,category,unit,imageUrl,priceFromKopecks,description,specs}`.
+- `GET /products?q=&category=&sort=&page=&limit=` — `{items, page, total}`. Элемент: `{id,slug,name,category,categoryId,unit,imageUrl,priceFromKopecks,description,specs}`.
 - `GET /products/:id` — карточка товара с массивом `offers`: `{id,supplierId,supplierName,warehouseId,priceKopecks,stock,deliveryDays,deliveryCostKopecks}`.
 - `GET /supplier/offers`, `POST /supplier/offers`, `PATCH /supplier/offers/:id` — предложения авторизованного поставщика.
 
@@ -20,8 +20,9 @@
 
 - Гостевая корзина хранится только в браузере; сервер при заказе заново проверяет цены, остатки и права. Позиция корзины: `{offerId,quantity}`.
 - `POST /quotes` — `{items:[{offerId,quantity}], address, requestedDate?}`; возвращает строки предложения, итоги товаров и доставки, недоступные позиции и предупреждения. Расчёт не изменяет остатки.
-- `GET /projects`, `POST /projects`, `GET /projects/:id`, `PATCH /projects/:id` — объекты покупателя. Объект хранит название, адрес, этапы и позиции потребности.
+- `GET /projects`, `POST /projects`, `GET /projects/:id`, `PATCH /projects/:id` — объекты покупателя. Список возвращает `itemCount`; карточка — позиции с количеством и датой этапа.
 - `POST /projects/:id/items` — добавить потребность `{productId,quantity,stageDate?}`. Импорт CSV/XLSX выполняется через UI с проверкой строк и вызовом этого метода для валидных позиций.
+- `PATCH /projects/:id/items/:itemId` — изменить положительное целое `quantity` и/или `stageDate` (`YYYY-MM-DD` либо `null`, чтобы убрать дату). `DELETE` по тому же пути удаляет позицию и возвращает 204. Обе операции доступны только владельцу объекта и не изменяют уже созданные заказы.
 - `POST /calculators/tiles|paint|dry-mix` — геометрия, норма расхода, размер упаковки и запас; ответ содержит формулу, расчётный расход и количество упаковок.
 
 ## Заказ и доставка

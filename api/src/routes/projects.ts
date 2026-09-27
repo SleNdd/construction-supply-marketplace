@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Body, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, HttpCode, Param, Body, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import { Db } from '../db';
 import { ApiError, dateField, positiveInt, requireRole, textField, uuidField } from '../security';
@@ -10,7 +10,7 @@ export class ProjectsController {
 
   @Get('projects') async projects(@Req() request: Request) {
     const user = requireRole(await this.db.user(request.cookies?.om_session),'buyer');
-    return this.db.rows('SELECT id,name,address,stages,created_at AS "createdAt" FROM projects WHERE buyer_id=$1 ORDER BY created_at DESC',[user.id]);
+    return this.db.rows('SELECT p.id,p.name,p.address,p.stages,p.created_at AS "createdAt",(SELECT COUNT(*)::int FROM project_items i WHERE i.project_id=p.id) AS "itemCount" FROM projects p WHERE p.buyer_id=$1 ORDER BY p.created_at DESC',[user.id]);
   }
 
   @Post('projects') async addProject(@Req() request: Request,@Body() body: Record<string,unknown>) {
@@ -25,7 +25,7 @@ export class ProjectsController {
     uuidField(id,'id');
     const project = await this.db.one('SELECT id,name,address,stages,created_at AS "createdAt" FROM projects WHERE id=$1 AND buyer_id=$2',[id,user.id]);
     if (!project) throw new ApiError(404,'not_found','Объект не найден');
-    const items = await this.db.rows('SELECT i.id,i.product_id AS "productId",p.name AS "productName",p.unit,i.quantity,i.stage_date AS "stageDate" FROM project_items i JOIN products p ON p.id=i.product_id WHERE i.project_id=$1 ORDER BY i.stage_date NULLS LAST,p.name',[id]);
+    const items = await this.db.rows(`SELECT i.id,i.product_id AS "productId",p.name AS "productName",p.unit,i.quantity,to_char(i.stage_date,'YYYY-MM-DD') AS "stageDate" FROM project_items i JOIN products p ON p.id=i.product_id WHERE i.project_id=$1 ORDER BY i.stage_date NULLS LAST,p.name`,[id]);
     return {...project,items};
   }
 
@@ -47,7 +47,29 @@ export class ProjectsController {
     await this.db.mustOwnProject(id,user.id);
     const productId = uuidField(body.productId,'productId');
     if (!await this.db.one('SELECT id FROM products WHERE id=$1',[productId])) throw new ApiError(404,'not_found','Товар не найден');
-    return this.db.one('INSERT INTO project_items(project_id,product_id,quantity,stage_date) VALUES($1,$2,$3,$4) RETURNING id,product_id AS "productId",quantity,stage_date AS "stageDate"',[id,productId,positiveInt(body.quantity,'quantity'),dateField(body.stageDate,'stageDate')]);
+    return this.db.one(`INSERT INTO project_items(project_id,product_id,quantity,stage_date) VALUES($1,$2,$3,$4) RETURNING id,product_id AS "productId",quantity,to_char(stage_date,'YYYY-MM-DD') AS "stageDate"`,[id,productId,positiveInt(body.quantity,'quantity'),dateField(body.stageDate,'stageDate')]);
+  }
+
+  @Patch('projects/:id/items/:itemId') async editItem(@Req() request: Request,@Param('id') id: string,@Param('itemId') itemId: string,@Body() body: Record<string,unknown>) {
+    const user = requireRole(await this.db.user(request.cookies?.om_session),'buyer');
+    uuidField(id,'id'); uuidField(itemId,'itemId');
+    if (!await this.db.one('SELECT i.id FROM project_items i JOIN projects p ON p.id=i.project_id WHERE i.id=$1 AND i.project_id=$2 AND p.buyer_id=$3',[itemId,id,user.id])) throw new ApiError(404,'not_found','Позиция не найдена');
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key)=>!['quantity','stageDate'].includes(key))) throw new ApiError(400,'invalid_input','Разрешено изменить только количество и дату этапа');
+    const values: unknown[]=[]; const sets: string[]=[];
+    if (body.quantity !== undefined) { values.push(positiveInt(body.quantity,'quantity')); sets.push(`quantity=$${values.length}`); }
+    if (body.stageDate !== undefined) { values.push(dateField(body.stageDate,'stageDate')); sets.push(`stage_date=$${values.length}`); }
+    if (!sets.length) throw new ApiError(400,'invalid_input','Нет полей для изменения');
+    values.push(itemId,id,user.id);
+    const item=await this.db.one(`UPDATE project_items i SET ${sets.join(',')} WHERE i.id=$${values.length-2} AND i.project_id=$${values.length-1} AND EXISTS (SELECT 1 FROM projects p WHERE p.id=i.project_id AND p.buyer_id=$${values.length}) RETURNING i.id,i.product_id AS "productId",i.quantity,to_char(i.stage_date,'YYYY-MM-DD') AS "stageDate"`,values);
+    if (!item) throw new ApiError(404,'not_found','Позиция не найдена');
+    return item;
+  }
+
+  @Delete('projects/:id/items/:itemId') @HttpCode(204) async removeItem(@Req() request: Request,@Param('id') id: string,@Param('itemId') itemId: string) {
+    const user = requireRole(await this.db.user(request.cookies?.om_session),'buyer');
+    uuidField(id,'id'); uuidField(itemId,'itemId');
+    const item=await this.db.one('DELETE FROM project_items i WHERE i.id=$1 AND i.project_id=$2 AND EXISTS (SELECT 1 FROM projects p WHERE p.id=i.project_id AND p.buyer_id=$3) RETURNING i.id',[itemId,id,user.id]);
+    if (!item) throw new ApiError(404,'not_found','Позиция не найдена');
   }
 
   @Post('calculators/tiles') tiles(@Body() body: Record<string,unknown>) { return calculateTiles(body); }
