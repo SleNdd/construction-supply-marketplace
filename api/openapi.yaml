@@ -56,7 +56,7 @@ components:
         imageUrl: {type: string, nullable: true}
         description: {type: string}
         specs: {type: object, additionalProperties: true}
-        priceFromKopecks: {type: integer, nullable: true}
+        priceFromKopecks: {type: integer, nullable: true, description: 'Минимальная цена активных предложений; при inStock=true учитываются только предложения с stock > 0. null, если подходящих предложений нет.'}
     Offer:
       type: object
       properties:
@@ -146,12 +146,16 @@ paths:
   /products:
     get:
       summary: Поиск и фильтрация товаров
+      description: 'Фильтры q, category, диапазон цены и наличие сочетаются. Границы цены включены и применяются к priceFromKopecks. Товары без активных предложений остаются без фильтров цены и наличия, но исключаются при любой границе цены или inStock=true. total — число товаров после фильтров, до пагинации. Неверные значения фильтров и maxPriceKopecks < minPriceKopecks возвращают 400 с code=invalid_input.'
       parameters:
         - {name: q, in: query, schema: {type: string}}
         - {name: category, in: query, schema: {type: string}}
         - {name: sort, in: query, schema: {type: string, enum: [name, price_asc, price_desc]}}
         - {name: page, in: query, schema: {type: integer, minimum: 1}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100}}
+        - {name: minPriceKopecks, in: query, description: 'Минимальная цена в целых неотрицательных копейках', schema: {type: integer, minimum: 0, maximum: 2147483647}}
+        - {name: maxPriceKopecks, in: query, description: 'Максимальная цена в целых неотрицательных копейках', schema: {type: integer, minimum: 0, maximum: 2147483647}}
+        - {name: inStock, in: query, description: 'true — только товары с активным предложением с stock > 0; false или отсутствие параметра — без ограничения наличия. При true цена и сортировка используют только предложения в наличии.', schema: {type: boolean, default: false}}
       responses:
         '200':
           description: Страница товаров
@@ -163,6 +167,7 @@ paths:
                   items: {type: array, items: {$ref: '#/components/schemas/Product'}}
                   page: {type: integer}
                   total: {type: integer}
+        '400': {$ref: '#/components/responses/Error'}
   /products/{id}:
     get:
       summary: Товар и предложения поставщиков

@@ -12,7 +12,11 @@
 ## Каталог и предложения
 
 - `GET /categories` — список `{id, name, slug}`.
-- `GET /products?q=&category=&sort=&page=&limit=` — `{items, page, total}`. Элемент: `{id,slug,name,category,categoryId,unit,imageUrl,priceFromKopecks,description,specs}`.
+- `GET /products?q=&category=&sort=&page=&limit=&minPriceKopecks=&maxPriceKopecks=&inStock=` — `{items, page, total}`. Элемент: `{id,slug,name,category,categoryId,unit,imageUrl,priceFromKopecks,description,specs}`. Неиспользуемые фильтры цены и наличия следует опускать, а не передавать пустую строку.
+  - `minPriceKopecks` и `maxPriceKopecks` — необязательные целые неотрицательные копейки от 0 до 2147483647; обе границы включены. Максимум не может быть меньше минимума. Пустые строки, дроби, отрицательные и выходящие за предел значения, а также повторные параметры отклоняются с `400 invalid_input`.
+  - `inStock` принимает только строки `true` и `false`. `true` оставляет товары с активными предложениями, у которых `stock > 0`; `false` и отсутствие параметра не ограничивают наличие. Другие и повторные значения дают `400 invalid_input`.
+  - `priceFromKopecks` — минимум цен активных предложений, а при `inStock=true` — минимум только среди предложений с положительным остатком. Диапазон цены и сортировка `price_asc`/`price_desc` применяются к этому же минимуму. Товары без подходящих предложений имеют `priceFromKopecks: null`, остаются без фильтров цены и наличия и располагаются после товаров с ценой; при любой границе цены или `inStock=true` они исключаются.
+  - Поиск `q`, категория по slug или ID, цена, наличие и сортировка сочетаются. `total` отражает число товаров после всех фильтров до пагинации; пустая страница сохраняет это число. Допустимые сортировки: `name`, `price_asc`, `price_desc`; неизвестная сортировка даёт `400 invalid_input`.
 - `GET /products/:id` — карточка товара с массивом `offers`: `{id,supplierId,supplierName,warehouseId,priceKopecks,stock,deliveryDays,deliveryCostKopecks}`.
 - `GET /supplier/offers`, `POST /supplier/offers`, `PATCH /supplier/offers/:id` — предложения авторизованного поставщика.
 

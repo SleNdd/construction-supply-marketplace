@@ -15,11 +15,27 @@ export class CatalogController {
     const q = (query.q || '').trim().slice(0,100);
     const category = (query.category || '').trim();
     const sort = query.sort || 'name';
-    const sortSql: Record<string,string> = {name:'p.name ASC,p.id ASC',price_asc:'min(o.price_kopecks) ASC NULLS LAST,p.name ASC,p.id ASC',price_desc:'min(o.price_kopecks) DESC NULLS LAST,p.name ASC,p.id ASC'};
-    if (!sortSql[sort]) throw new ApiError(400,'invalid_input','Неизвестная сортировка');
-    const filter = "WHERE ($1='' OR p.name ILIKE '%'||$1||'%' OR p.description ILIKE '%'||$1||'%') AND ($2='' OR c.slug=$2 OR c.id::text=$2)";
-    const total = await this.db.one<{count:string}>(`SELECT count(*)::text AS count FROM products p JOIN categories c ON c.id=p.category_id ${filter}`,[q,category]);
-    const items = await this.db.rows(`SELECT p.id,p.slug,p.name,p.category_id AS "categoryId",c.name AS category,p.unit,p.image_url AS "imageUrl",p.description,p.specs,min(o.price_kopecks)::int AS "priceFromKopecks" FROM products p JOIN categories c ON c.id=p.category_id LEFT JOIN offers o ON o.product_id=p.id AND o.active ${filter} GROUP BY p.id,c.name ORDER BY ${sortSql[sort]} LIMIT $3 OFFSET $4`,[q,category,limit,(page-1)*limit]);
+    const priceFilter = (name: string): number|null => {
+      const value = query[name];
+      if (value === undefined) return null;
+      if (typeof value !== 'string' || !/^\d+$/.test(value) || !Number.isSafeInteger(Number(value)) || Number(value)>2147483647) throw new ApiError(400,'invalid_input',`${name}: требуется целое число копеек от 0 до 2147483647`);
+      return Number(value);
+    };
+    const minPrice = priceFilter('minPriceKopecks');
+    const maxPrice = priceFilter('maxPriceKopecks');
+    if (minPrice!==null && maxPrice!==null && maxPrice<minPrice) throw new ApiError(400,'invalid_input','Максимальная цена меньше минимальной');
+    if (query.inStock!==undefined && query.inStock!=='true' && query.inStock!=='false') throw new ApiError(400,'invalid_input','inStock: требуется true или false');
+    const inStock = query.inStock==='true';
+    const sortSql: Record<string,string> = {name:'p.name ASC,p.id ASC',price_asc:'available.price ASC NULLS LAST,p.name ASC,p.id ASC',price_desc:'available.price DESC NULLS LAST,p.name ASC,p.id ASC'};
+    if (!Object.hasOwn(sortSql,sort)) throw new ApiError(400,'invalid_input','Неизвестная сортировка');
+    const source = `FROM products p JOIN categories c ON c.id=p.category_id
+      LEFT JOIN LATERAL (SELECT min(o.price_kopecks)::int AS price FROM offers o WHERE o.product_id=p.id AND o.active AND (NOT $3::boolean OR o.stock>0)) available ON true
+      WHERE ($1='' OR p.name ILIKE '%'||$1||'%' OR p.description ILIKE '%'||$1||'%') AND ($2='' OR c.slug=$2 OR c.id::text=$2)
+      AND (NOT $3::boolean OR available.price IS NOT NULL)
+      AND ($4::int IS NULL OR available.price>=$4::int) AND ($5::int IS NULL OR available.price<=$5::int)`;
+    const params = [q,category,inStock,minPrice,maxPrice];
+    const total = await this.db.one<{count:string}>(`SELECT count(*)::text AS count ${source}`,params);
+    const items = await this.db.rows(`SELECT p.id,p.slug,p.name,p.category_id AS "categoryId",c.name AS category,p.unit,p.image_url AS "imageUrl",p.description,p.specs,available.price AS "priceFromKopecks" ${source} ORDER BY ${sortSql[sort]} LIMIT $6 OFFSET $7`,[...params,limit,(page-1)*limit]);
     return {items,page,total:Number(total?.count||0)};
   }
 

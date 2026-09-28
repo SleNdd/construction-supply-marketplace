@@ -37,6 +37,73 @@ async function waitForServer(child:ChildProcess) {
   throw new Error('API не запустился');
 }
 
+async function catalogFilters() {
+  const suffix=randomUUID().slice(0,8);
+  const term=`Фильтр ${suffix}`;
+  const categoryIds=[randomUUID(),randomUUID()];
+  const ids=Array.from({length:6},()=>randomUUID());
+  const warehouses=(await pool.query<{id:string;supplier_id:string}>('SELECT id,supplier_id FROM warehouses ORDER BY id LIMIT 2')).rows;
+  assert.equal(warehouses.length,2,'для сравнения цен нужны два склада');
+  try {
+    for (let index=0;index<2;index++) await pool.query('INSERT INTO categories(id,name,slug) VALUES($1,$2,$3)',[categoryIds[index],`${term} категория ${index}`,`filter-${suffix}-${index}`]);
+    for (let index=0;index<ids.length;index++) await pool.query('INSERT INTO products(id,category_id,slug,name,unit) VALUES($1,$2,$3,$4,$5)',[ids[index],categoryIds[index===5?1:0],`filter-${suffix}-${index}`,`${term} ${index}`,'шт.']);
+    const offer=async (index:number,price:number,stock:number,active=true,warehouseIndex=0)=>{
+      const warehouse=warehouses[warehouseIndex];
+      await pool.query('INSERT INTO offers(product_id,supplier_id,warehouse_id,price_kopecks,stock,delivery_days,delivery_cost_kopecks,active) VALUES($1,$2,$3,$4,$5,1,0,$6)',[ids[index],warehouse.supplier_id,warehouse.id,price,stock,active]);
+    };
+    await offer(0,100,0); await offer(0,300,5,true,1);
+    await offer(1,200,5); await offer(2,150,0); await offer(3,50,5,false); await offer(5,250,5);
+    const get=async (filters:Record<string,string>={})=>{
+      const result=await request(`/products?${new URLSearchParams({q:term,category:categoryIds[0],limit:'100',...filters})}`);
+      assert.equal(result.status,200,JSON.stringify(result.data));
+      return result.data as {items:Array<{id:string;priceFromKopecks:number|null}>;page:number;total:number};
+    };
+    const baseline=await get({sort:'price_asc'});
+    assert.equal(baseline.total,5,'q и category исключают товар из другой категории');
+    assert.deepEqual(baseline.items.map(row=>row.priceFromKopecks),[100,150,200,null,null],'активное предложение без остатка участвует в цене, неактивное — нет');
+    assert.deepEqual(await get({inStock:'false',sort:'price_asc'}),baseline,'false сохраняет товары без доступного остатка');
+    const range=await get({minPriceKopecks:'100',maxPriceKopecks:'200',sort:'price_desc'});
+    assert.equal(range.total,3);
+    assert.deepEqual(range.items.map(row=>row.priceFromKopecks),[200,150,100],'границы включены, цена — минимум предложений');
+    assert.deepEqual((await get({minPriceKopecks:'100',maxPriceKopecks:'100'})).items.map(row=>row.id),[ids[0]],'равные границы допустимы');
+    assert.equal((await get({minPriceKopecks:'250'})).total,0,'дорогое предложение не подменяет минимум товара');
+    assert.equal((await get({maxPriceKopecks:'150'})).total,2,'верхняя граница без нижней');
+    assert.equal((await get({minPriceKopecks:'0',maxPriceKopecks:'2147483647'})).total,3,'нулевая и предельная границы допустимы, товары без активной цены исключены');
+    assert.equal((await get({maxPriceKopecks:'0'})).total,0);
+    const stocked=await get({inStock:'true',sort:'price_asc'});
+    assert.equal(stocked.total,2,'только активные предложения с положительным остатком');
+    assert.deepEqual(stocked.items.map(row=>[row.id,row.priceFromKopecks]),[[ids[1],200],[ids[0],300]],'наличие меняет минимальную цену и порядок');
+    assert.deepEqual((await get({inStock:'true',sort:'price_desc'})).items.map(row=>row.id),[ids[0],ids[1]]);
+    assert.deepEqual((await get({inStock:'true',minPriceKopecks:'250',maxPriceKopecks:'300'})).items.map(row=>row.id),[ids[0]],'диапазон применён к минимальной цене в наличии');
+    assert.equal((await get({inStock:'true',maxPriceKopecks:'150'})).total,0);
+    const first=await get({inStock:'true',minPriceKopecks:'200',sort:'price_asc',limit:'1'});
+    const second=await get({inStock:'true',minPriceKopecks:'200',sort:'price_asc',limit:'1',page:'2'});
+    const beyond=await get({inStock:'true',minPriceKopecks:'200',sort:'price_asc',limit:'1',page:'3'});
+    assert.deepEqual([first.total,second.total,beyond.total],[2,2,2],'total учитывает фильтры до пагинации');
+    assert.deepEqual([first.items[0].id,second.items[0].id],[ids[1],ids[0]]);
+    assert.equal(beyond.items.length,0);
+    assert.equal(beyond.page,3);
+    assert.deepEqual((await get({category:`filter-${suffix}-1`,inStock:'true',minPriceKopecks:'250'})).items.map(row=>row.id),[ids[5]],'категория по slug сочетается с поиском и ценой');
+    assert.equal((await get({q:`${term} отсутствует`,inStock:'true'})).total,0);
+    for (const name of ['minPriceKopecks','maxPriceKopecks']) {
+      for (const value of ['','-1','1.5','1e2','NaN','Infinity','2147483648','9007199254740992',' 100','+100']) {
+        const invalid=await request(`/products?${new URLSearchParams({[name]:value})}`);
+        assert.equal(invalid.status,400,`${name}=${value}`);
+        assert.equal(invalid.data.code,'invalid_input');
+      }
+    }
+    for (const query of ['minPriceKopecks=200&maxPriceKopecks=100','inStock=','inStock=1','inStock=True','inStock=yes','minPriceKopecks=1&minPriceKopecks=2','maxPriceKopecks=1&maxPriceKopecks=2','inStock=true&inStock=false','sort=__proto__']) {
+      const invalid=await request(`/products?${query}`);
+      assert.equal(invalid.status,400,query);
+      assert.equal(invalid.data.code,'invalid_input');
+    }
+  } finally {
+    await pool.query('DELETE FROM offers WHERE product_id=ANY($1::uuid[])',[ids]);
+    await pool.query('DELETE FROM products WHERE id=ANY($1::uuid[])',[ids]);
+    await pool.query('DELETE FROM categories WHERE id=ANY($1::uuid[])',[categoryIds]);
+  }
+}
+
 async function main() {
   script('scripts/migrate.ts');
   script('scripts/seed.ts');
@@ -46,6 +113,7 @@ async function main() {
   let serverError=''; child.stderr?.on('data',(chunk)=>{serverError+=chunk.toString();});
   try {
     await waitForServer(child).catch((error)=>{throw new Error(`${error}: ${serverError}`);});
+    await catalogFilters();
     const failedEmails=Array.from({length:40},()=>`absent-${randomUUID()}@example.test`);
     const failed=await Promise.all(failedEmails.map((email)=>request('/auth/login','POST',{email,password:'wrong'})));
     assert.ok(failed.every((result)=>result.status===401),'ошибки разных адресов не должны блокировать всех покупателей');
@@ -165,7 +233,7 @@ async function main() {
     const finishes=await Promise.all(multi.data.deliveries.map((delivery: {id:string})=>request(`/driver/deliveries/${delivery.id}/events`,'POST',{status:'delivered'},driver)));
     assert.ok(finishes.every((result)=>result.status===201),JSON.stringify(finishes));
     assert.equal((await request(`/orders/${multi.data.id}`,'GET',undefined,a)).data.status,'delivered','заказ закрывается после параллельного завершения поставок');
-    console.log('PASS: вход, сортировка каталога, снимок единицы, идемпотентность, резерв, права, позиции объекта, конкурентные заказы и поставки');
+    console.log('PASS: вход, сортировка и фильтры каталога, снимок единицы, идемпотентность, резерв, права, позиции объекта, конкурентные заказы и поставки');
   } finally { child.kill(); await pool.end(); }
 }
 main().catch((error)=>{console.error(error);process.exitCode=1;});

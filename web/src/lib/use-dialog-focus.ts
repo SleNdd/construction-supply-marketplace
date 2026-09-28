@@ -15,6 +15,8 @@ export function useDialogFocus(open: boolean, onClose: () => void, returnSelecto
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const dialog = dialogRef.current;
     if (!dialog) return;
+    const bodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const firstField = dialog.querySelector<HTMLElement>('input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled)');
     (firstField || dialog.querySelector<HTMLElement>(focusable) || dialog).focus();
 
@@ -31,9 +33,10 @@ export function useDialogFocus(open: boolean, onClose: () => void, returnSelecto
     document.addEventListener('keydown', onKeyDown);
     return () => {
       document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = bodyOverflow;
       requestAnimationFrame(() => {
         const replacement = returnSelector ? document.querySelector<HTMLElement>(returnSelector) : null;
-        const target = previous?.isConnected ? previous : (replacement?.getClientRects().length ? replacement : document.getElementById('main-content'));
+        const target = previous?.isConnected && previous.getClientRects().length ? previous : (replacement?.getClientRects().length ? replacement : document.getElementById('main-content'));
         target?.focus();
       });
     };
