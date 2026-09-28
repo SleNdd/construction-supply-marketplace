@@ -55,9 +55,34 @@ jobs:
 
   web:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: obektmarket_test
+          POSTGRES_USER: obektmarket
+          POSTGRES_PASSWORD: browser-test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U obektmarket -d obektmarket_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: web
+    env:
+      DATABASE_URL: postgres://obektmarket:browser-test-password@localhost:5432/obektmarket_test
+      API_PORT: 4100
+      API_INTERNAL_URL: http://localhost:4100
+      CORS_ORIGIN: http://localhost:3100
+      PUBLIC_ORIGIN: http://localhost:3100
+      DEMO_SEED: "true"
+      COOKIE_SECURE: "false"
+      DADATA_API_KEY: ""
+      GIS_ROUTING_KEY: ""
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -69,3 +94,26 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+      - name: Подготовить отдельный API для браузерных испытаний
+        working-directory: api
+        run: |
+          npm ci
+          npm run migrate
+          npm run seed
+          npm run build
+          npm run start:prod > /tmp/obektmarket-browser-api.log 2>&1 &
+          for i in {1..30}; do
+            if curl --fail --silent http://localhost:4100/api/v1/health > /dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://localhost:4100/api/v1/health
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: browser-test-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          retention-days: 7

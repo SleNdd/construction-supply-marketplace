@@ -2,3 +2,5 @@ node_modules
 .next
 .env*
 *.log
+playwright-report
+test-results

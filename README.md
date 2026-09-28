@@ -51,6 +51,7 @@ docker compose up --build -d
 - [Запуск и развёртывание](docs/DEPLOY.md)
 - [Постановка задачи и аналоги](docs/RESEARCH.md)
 - [План испытаний](docs/TEST_PLAN.md) и [результаты локальной проверки](docs/TEST_RESULTS.md)
+- [Запуск браузерных испытаний](docs/BROWSER_TESTS.md)
 - [Материалы защиты](docs/DEFENSE.md)
 - [Пояснительная записка](docs/vkr/Пояснительная_записка_ОбъектМаркет.docx), [презентация](docs/presentation/output/ОбъектМаркет_Защита_ВКР.pptx), [текст доклада](docs/SPEECH.md) и [графические листы](docs/graphic-sheets/)
 
