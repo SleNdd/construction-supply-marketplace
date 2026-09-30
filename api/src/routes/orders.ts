@@ -3,6 +3,8 @@ import type { Request } from 'express';
 import { createHash } from 'node:crypto';
 import { PoolClient } from 'pg';
 import { Db } from '../db';
+import { earliestDateInAstrakhan, todayInAstrakhan } from '../calendar-date';
+import { normalizeOrderMoney } from '../order-money';
 import { ApiError, dateField, positiveInt, requireRole, textField, uuidField } from '../security';
 
 type CartItem = { offerId: string; quantity: number };
@@ -26,12 +28,6 @@ export function parseItems(value: unknown): CartItem[] {
 
 // Учебная зона ограничена адресами города Астрахани в формате «Астрахань, улица, дом».
 export function inDemoZone(address: string): boolean { return /^(?:г\.?\s*)?астрахань\s*,\s*\S.+$/iu.test(address.trim()); }
-
-function earliestDate(days: number): string {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate()+days);
-  return date.toISOString().slice(0,10);
-}
 
 export function getTotals(items: CartItem[], offers: Offer[]) {
   const offerMap = new Map(offers.map((o)=>[o.id,o]));
@@ -81,8 +77,12 @@ export class OrdersController {
     const result = getTotals(items,await this.offers(items.map((i)=>i.offerId)));
     const warnings: string[]=[];
     if (!inDemoZone(address)) warnings.push('Демонстрационная зона доставки ограничена Астраханью');
-    if (requestedDate && requestedDate < new Date().toISOString().slice(0,10)) warnings.push('Запрошенная дата уже прошла');
-    if (requestedDate) for (const line of result.lines) if (requestedDate < earliestDate(line.deliveryDays)) warnings.push(`${line.productName}: ближайшая дата поставки ${earliestDate(line.deliveryDays)}`);
+    const now = new Date();
+    if (requestedDate && requestedDate < todayInAstrakhan(now)) warnings.push('Запрошенная дата уже прошла');
+    if (requestedDate) for (const line of result.lines) {
+      const earliest = earliestDateInAstrakhan(line.deliveryDays,now);
+      if (requestedDate < earliest) warnings.push(`${line.productName}: ближайшая дата поставки ${earliest}`);
+    }
     return {lines:result.lines,itemsTotalKopecks:result.itemsTotalKopecks,deliveryTotalKopecks:result.deliveryTotalKopecks,totalKopecks:result.totalKopecks,unavailable:result.unavailable,warnings,source:'demo',deliveryZone:'demo-astrakhan',zoneAvailable:inDemoZone(address),pricingNote:'Доставка считается один раз для каждого поставщика по максимальной ставке его предложений'};
   }
 
@@ -104,11 +104,12 @@ export class OrdersController {
         if (prior.rows[0].request_hash!==requestHash) throw new ApiError(409,'idempotency_conflict','Ключ уже использован для другого заказа');
         return prior.rows[0].order_id;
       }
-      if (requestedDate && requestedDate < new Date().toISOString().slice(0,10)) throw new ApiError(400,'invalid_date','Дата доставки уже прошла');
+      const now = new Date();
+      if (requestedDate && requestedDate < todayInAstrakhan(now)) throw new ApiError(400,'invalid_date','Дата доставки уже прошла');
       const offers = await this.offers(items.map((i)=>i.offerId),client);
       const totals = getTotals(items,offers);
       if (totals.unavailable.length) throw new ApiError(409,'stock_unavailable',`Позиции недоступны: ${totals.unavailable.map((row)=>row.offerId).join(', ')}`);
-      if (requestedDate && totals.lines.some((line)=>requestedDate<earliestDate(line.deliveryDays))) throw new ApiError(409,'delivery_date_unavailable','Запрошенная дата раньше доступного срока поставки');
+      if (requestedDate && totals.lines.some((line)=>requestedDate<earliestDateInAstrakhan(line.deliveryDays,now))) throw new ApiError(409,'delivery_date_unavailable','Запрошенная дата раньше доступного срока поставки');
       const created = await client.query<{id:string}>("INSERT INTO orders(buyer_id,project_id,address,requested_date,items_total_kopecks,delivery_total_kopecks,reservation_expires_at) VALUES($1,$2,$3,$4,$5,$6,now()+interval '30 minutes') RETURNING id",[user.id,projectId,address,requestedDate,totals.itemsTotalKopecks,totals.deliveryTotalKopecks]);
       const id = created.rows[0].id;
       for (const line of totals.lines) {
@@ -125,18 +126,19 @@ export class OrdersController {
   @Get('orders') async orders(@Req() request: Request) {
     const user = requireRole(await this.db.user(request.cookies?.om_session),'buyer');
     await this.expireReservations();
-    return this.db.rows('SELECT id,address,requested_date AS "requestedDate",reservation_expires_at AS "reservationExpiresAt",status,items_total_kopecks AS "itemsTotalKopecks",delivery_total_kopecks AS "deliveryTotalKopecks",(items_total_kopecks+delivery_total_kopecks) AS "totalKopecks",created_at AS "createdAt" FROM orders WHERE buyer_id=$1 ORDER BY created_at DESC',[user.id]);
+    const orders = await this.db.rows(`SELECT id,address,to_char(requested_date,'YYYY-MM-DD') AS "requestedDate",reservation_expires_at AS "reservationExpiresAt",status,items_total_kopecks AS "itemsTotalKopecks",delivery_total_kopecks AS "deliveryTotalKopecks",(items_total_kopecks+delivery_total_kopecks) AS "totalKopecks",created_at AS "createdAt" FROM orders WHERE buyer_id=$1 ORDER BY created_at DESC`,[user.id]);
+    return orders.map(normalizeOrderMoney);
   }
 
   @Get('orders/:id') async order(@Req() request: Request,@Param('id') id: string) {
     const user = requireRole(await this.db.user(request.cookies?.om_session),'buyer');
     uuidField(id,'id');
     await this.expireReservations();
-    const order = await this.db.one('SELECT id,address,requested_date AS "requestedDate",reservation_expires_at AS "reservationExpiresAt",project_id AS "projectId",status,items_total_kopecks AS "itemsTotalKopecks",delivery_total_kopecks AS "deliveryTotalKopecks",(items_total_kopecks+delivery_total_kopecks) AS "totalKopecks",created_at AS "createdAt" FROM orders WHERE id=$1 AND buyer_id=$2',[id,user.id]);
+    const order = await this.db.one(`SELECT id,address,to_char(requested_date,'YYYY-MM-DD') AS "requestedDate",reservation_expires_at AS "reservationExpiresAt",project_id AS "projectId",status,items_total_kopecks AS "itemsTotalKopecks",delivery_total_kopecks AS "deliveryTotalKopecks",(items_total_kopecks+delivery_total_kopecks) AS "totalKopecks",created_at AS "createdAt" FROM orders WHERE id=$1 AND buyer_id=$2`,[id,user.id]);
     if (!order) throw new ApiError(404,'not_found','Заказ не найден');
     const items = await this.db.rows('SELECT i.id,i.offer_id AS "offerId",i.supplier_id AS "supplierId",s.name AS "supplierName",i.product_name AS "productName",i.quantity,i.unit,i.price_kopecks AS "priceKopecks" FROM order_items i JOIN suppliers s ON s.id=i.supplier_id WHERE i.order_id=$1',[id]);
-    const deliveries = await this.db.rows('SELECT d.id,d.supplier_id AS "supplierId",s.name AS "supplierName",d.driver_id AS "driverId",d.status,d.scheduled_date AS "scheduledDate",d.route,d.delivery_cost_kopecks AS "deliveryCostKopecks" FROM deliveries d JOIN suppliers s ON s.id=d.supplier_id WHERE d.order_id=$1',[id]);
-    return {...order,items,deliveries,paymentMode:'demo',trackingMode:'demo'};
+    const deliveries = await this.db.rows(`SELECT d.id,d.supplier_id AS "supplierId",s.name AS "supplierName",d.driver_id AS "driverId",d.status,to_char(d.scheduled_date,'YYYY-MM-DD') AS "scheduledDate",d.route,d.delivery_cost_kopecks AS "deliveryCostKopecks" FROM deliveries d JOIN suppliers s ON s.id=d.supplier_id WHERE d.order_id=$1`,[id]);
+    return {...normalizeOrderMoney(order),items,deliveries,paymentMode:'demo',trackingMode:'demo'};
   }
 
   @Post('orders/:id/demo-payment') async pay(@Req() request: Request,@Param('id') id: string) {

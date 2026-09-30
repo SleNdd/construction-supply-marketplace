@@ -28,6 +28,53 @@ async function buyer() {
   return result.cookie!;
 }
 
+function assertOrderMoney(order: Record<string,unknown>, quote: Record<string,unknown>, label: string) {
+  for (const field of ['itemsTotalKopecks','deliveryTotalKopecks','totalKopecks']) {
+    assert.equal(typeof order[field],'number',`${label}: ${field} — число JSON`);
+    assert.ok(Number.isSafeInteger(order[field]) && Number(order[field])>=0,`${label}: ${field} — точные неотрицательные копейки`);
+    assert.equal(order[field],quote[field],`${label}: ${field} совпадает с расчётом`);
+  }
+}
+
+function assertCalendarDate(value: unknown, expected: string|null, label: string) {
+  assert.equal(value,expected,`${label}: дата календаря передаётся как YYYY-MM-DD либо null`);
+  if (value!==null) assert.match(String(value),/^\d{4}-\d{2}-\d{2}$/,`${label}: без времени и смещения часового пояса`);
+}
+
+async function orderMoneyBoundaries(cookie: string, adminCookie: string) {
+  const user=(await request('/auth/me','GET',undefined,cookie)).data.user;
+  const id=randomUUID();
+  try {
+    await pool.query("INSERT INTO orders(id,buyer_id,address,status,items_total_kopecks,delivery_total_kopecks) VALUES($1,$2,'Астрахань, тестовая сумма, 1','paid',0,0)",[id,user.id]);
+    for (const [items,delivery] of [['0','0'],['2147483648','2147483649'],['9007199254740991','0'],['0','9007199254740991']]) {
+      await pool.query('UPDATE orders SET items_total_kopecks=$1,delivery_total_kopecks=$2 WHERE id=$3',[items,delivery,id]);
+      const expected={itemsTotalKopecks:Number(items),deliveryTotalKopecks:Number(delivery),totalKopecks:Number(BigInt(items)+BigInt(delivery))};
+      const detail=await request(`/orders/${id}`,'GET',undefined,cookie);
+      assert.equal(detail.status,200,JSON.stringify(detail.data));
+      assertOrderMoney(detail.data,expected,'граница суммы: карточка');
+      const list=await request('/orders','GET',undefined,cookie);
+      assert.equal(list.status,200,JSON.stringify(list.data));
+      assertOrderMoney(list.data.find((order:{id:string})=>order.id===id),expected,'граница суммы: список');
+    }
+    for (const [items,delivery] of [['9007199254740992','0'],['0','9007199254740992'],['9007199254740991','1'],['-1','2'],['2','-1']]) {
+      await pool.query('UPDATE orders SET items_total_kopecks=$1,delivery_total_kopecks=$2 WHERE id=$3',[items,delivery,id]);
+      for (const path of [`/orders/${id}`,'/orders']) {
+        const invalid=await request(path,'GET',undefined,cookie);
+        assert.equal(invalid.status,500,`${path}: ${items} + ${delivery}`);
+        assert.equal(invalid.data.code,'invalid_order_amount');
+      }
+    }
+    await pool.query('UPDATE orders SET items_total_kopecks=$1,delivery_total_kopecks=0 WHERE id=$2',['9007199254740993',id]);
+    const summary=await request('/reports/summary','GET',undefined,adminCookie);
+    assert.equal(summary.status,200,JSON.stringify(summary.data));
+    const expected=(await pool.query<{total:string}>('SELECT sum(items_total_kopecks+delivery_total_kopecks)::text AS total FROM orders')).rows[0].total;
+    assert.equal(typeof summary.data.orders.totalKopecks,'string','агрегат отчёта сохраняет строковый контракт');
+    assert.equal(summary.data.orders.totalKopecks,expected,'отчёт сохраняет сумму больше MAX_SAFE_INTEGER без округления');
+  } finally {
+    await pool.query('DELETE FROM orders WHERE id=$1',[id]);
+  }
+}
+
 async function waitForServer(child:ChildProcess) {
   for (let attempt=0;attempt<300;attempt++) {
     if (child.exitCode!==null) throw new Error(`API exited: ${child.exitCode}`);
@@ -135,6 +182,7 @@ async function main() {
     assert.equal(typeof product.categoryId,'string','каталог возвращает ID категории для редактирования');
     const adminLogin=await request('/auth/login','POST',{email:'admin@example.test',password:'Demo2026!'});
     assert.equal(adminLogin.status,201);
+    await orderMoneyBoundaries(a,adminLogin.cookie!);
     const withoutOffer=await request('/admin/products','POST',{categoryId:product.categoryId,slug:'test-without-offer',name:'Товар без предложения',unit:'шт.'},adminLogin.cookie);
     assert.equal(withoutOffer.status,201,JSON.stringify(withoutOffer.data));
     for(const direction of ['price_asc','price_desc']) {
@@ -150,29 +198,55 @@ async function main() {
     const offerId=(await request(`/products/${product.id}`)).data.offers[0].id;
     const stock=Number((await pool.query<{stock:number}>('SELECT stock FROM offers WHERE id=$1',[offerId])).rows[0].stock);
     const purchase={items:[{offerId,quantity:2}],address:'Астрахань, ул. Савушкина, 6'};
+    const quote=await request('/quotes','POST',purchase);
+    assert.equal(quote.status,201,JSON.stringify(quote.data));
     assert.equal((await request('/orders','POST',purchase,a)).status,400,'ключ обязателен');
     const key=randomUUID();
     const first=await request('/orders','POST',purchase,a,key);
     assert.equal(first.status,201,JSON.stringify(first.data));
+    assertOrderMoney(first.data,quote.data,'создание заказа');
+    const orderDetail=await request(`/orders/${first.data.id}`,'GET',undefined,a);
+    assert.equal(orderDetail.status,200);
+    assertOrderMoney(orderDetail.data,quote.data,'карточка заказа');
+    assertCalendarDate(orderDetail.data.requestedDate,null,'карточка заказа без запрошенной даты');
+    const orderList=await request('/orders','GET',undefined,a);
+    assert.equal(orderList.status,200);
+    assertOrderMoney(orderList.data.find((order:{id:string})=>order.id===first.data.id),quote.data,'список заказов');
+    assertCalendarDate(orderList.data.find((order:{id:string})=>order.id===first.data.id).requestedDate,null,'список заказов без запрошенной даты');
     const productId=(await pool.query<{product_id:string}>('SELECT product_id FROM offers WHERE id=$1',[offerId])).rows[0].product_id;
     const originalUnit=first.data.items[0].unit;
     await pool.query("UPDATE products SET unit='другая единица' WHERE id=$1",[productId]);
     assert.equal((await request(`/orders/${first.data.id}`,'GET',undefined,a)).data.items[0].unit,originalUnit,'история заказа хранит единицу измерения');
     await pool.query('UPDATE products SET unit=$1 WHERE id=$2',[originalUnit,productId]);
     const replay=await request('/orders','POST',purchase,a,key);
+    assert.equal(replay.status,201,JSON.stringify(replay.data));
     assert.equal(replay.data.id,first.data.id);
+    assertOrderMoney(replay.data,quote.data,'повтор создания заказа');
     assert.equal((await request('/orders','POST',{...purchase,items:[{offerId,quantity:3}]},a,key)).status,409);
     assert.equal(Number((await pool.query<{stock:number}>('SELECT stock FROM offers WHERE id=$1',[offerId])).rows[0].stock),stock-2);
     assert.equal((await request(`/orders/${first.data.id}`, 'GET',undefined,b)).status,404,'чужой заказ скрыт');
     assert.equal((await request(`/orders/${first.data.id}/cancel`,'POST',undefined,b)).status,404,'чужой заказ нельзя отменить');
     const cancelled=await request(`/orders/${first.data.id}/cancel`,'POST',undefined,a);
+    assert.equal(cancelled.status,201,JSON.stringify(cancelled.data));
     assert.equal(cancelled.data.status,'cancelled');
-    assert.equal((await request(`/orders/${first.data.id}/cancel`,'POST',undefined,a)).data.status,'cancelled');
+    assertOrderMoney(cancelled.data,quote.data,'отмена заказа');
+    const cancelledAgain=await request(`/orders/${first.data.id}/cancel`,'POST',undefined,a);
+    assert.equal(cancelledAgain.data.status,'cancelled');
+    assertOrderMoney(cancelledAgain.data,quote.data,'повтор отмены заказа');
     assert.equal(Number((await pool.query<{stock:number}>('SELECT stock FROM offers WHERE id=$1',[offerId])).rows[0].stock),stock,'резерв возвращён ровно один раз');
     assert.equal((await request(`/orders/${first.data.id}/demo-payment`,'POST',undefined,a)).status,409);
-    const paid=await request('/orders','POST',{...purchase,items:[{offerId,quantity:1}]},a,randomUUID());
+    const paidPurchase={...purchase,items:[{offerId,quantity:1}]};
+    const paidQuote=await request('/quotes','POST',paidPurchase);
+    assert.equal(paidQuote.status,201);
+    const paid=await request('/orders','POST',paidPurchase,a,randomUUID());
     assert.equal(paid.status,201);
-    assert.equal((await request(`/orders/${paid.data.id}/demo-payment`,'POST',undefined,a)).data.status,'paid');
+    assertOrderMoney(paid.data,paidQuote.data,'создание оплачиваемого заказа');
+    for (let attempt=0;attempt<2;attempt++) {
+      const payment=await request(`/orders/${paid.data.id}/demo-payment`,'POST',undefined,a);
+      assert.equal(payment.status,201,JSON.stringify(payment.data));
+      assert.equal(payment.data.status,'paid');
+      assertOrderMoney(payment.data,paidQuote.data,'оплата и её повтор');
+    }
     assert.equal((await request(`/orders/${paid.data.id}/cancel`,'POST',undefined,a)).status,409,'оплаченный заказ нельзя отменить');
     const expiring=await request('/orders','POST',{...purchase,items:[{offerId,quantity:1}]},a,randomUUID());
     assert.equal(expiring.status,201);
@@ -219,21 +293,49 @@ async function main() {
     const fromFirst=supplierOffers[0];
     const fromSecond=supplierOffers.find((row)=>row.supplier_id!==fromFirst.supplier_id);
     assert.ok(fromSecond,'для проверки поставок нужны два поставщика');
-    const multi=await request('/orders','POST',{items:[{offerId:fromFirst.id,quantity:1},{offerId:fromSecond.id,quantity:1}],address:'Астрахань, ул. Савушкина, 6'},a,randomUUID());
+    const requestedDate='2030-01-02';
+    const multi=await request('/orders','POST',{items:[{offerId:fromFirst.id,quantity:1},{offerId:fromSecond.id,quantity:1}],address:'Астрахань, ул. Савушкина, 6',requestedDate},a,randomUUID());
     assert.equal(multi.status,201,JSON.stringify(multi.data));
     assert.equal(multi.data.deliveries.length,2);
+    const requestedDetail=await request(`/orders/${multi.data.id}`,'GET',undefined,a);
+    assert.equal(requestedDetail.status,200,JSON.stringify(requestedDetail.data));
+    assertCalendarDate(requestedDetail.data.requestedDate,requestedDate,'карточка заказа с запрошенной датой');
+    const requestedList=await request('/orders','GET',undefined,a);
+    assert.equal(requestedList.status,200,JSON.stringify(requestedList.data));
+    assertCalendarDate(requestedList.data.find((order:{id:string})=>order.id===multi.data.id).requestedDate,requestedDate,'список заказов с запрошенной датой');
     assert.equal((await request(`/orders/${multi.data.id}/demo-payment`,'POST',undefined,a)).status,201);
     const dispatcher=(await request('/auth/login','POST',{email:'dispatcher@example.test',password:'Demo2026!'})).cookie!;
     const driver=(await request('/auth/login','POST',{email:'driver@example.test',password:'Demo2026!'})).cookie!;
     const driverId=(await request('/dispatch/drivers','GET',undefined,dispatcher)).data[0].id;
+    const dispatchBefore=await request('/dispatch/deliveries','GET',undefined,dispatcher);
+    assert.equal(dispatchBefore.status,200,JSON.stringify(dispatchBefore.data));
     for (const delivery of multi.data.deliveries) {
-      assert.equal((await request(`/dispatch/deliveries/${delivery.id}`,'PATCH',{driverId},dispatcher)).status,200);
+      const pending=dispatchBefore.data.find((row:{id:string})=>row.id===delivery.id);
+      assert.ok(pending,`рейс ${delivery.id} присутствует в диспетчерском списке`);
+      assertCalendarDate(pending.scheduledDate,null,'рейс до назначения');
+    }
+    const scheduledDates=['2030-02-03',null] as const;
+    for (const [index,delivery] of multi.data.deliveries.entries()) {
+      const scheduledDate=scheduledDates[index];
+      const assigned=await request(`/dispatch/deliveries/${delivery.id}`,'PATCH',{driverId,scheduledDate},dispatcher);
+      assert.equal(assigned.status,200,JSON.stringify(assigned.data));
+      assertCalendarDate(assigned.data.scheduledDate,scheduledDate,'ответ назначения рейса');
       for (const status of ['picked_up','in_transit']) assert.equal((await request(`/driver/deliveries/${delivery.id}/events`,'POST',{status},driver)).status,201);
+    }
+    const dispatchAfter=await request('/dispatch/deliveries','GET',undefined,dispatcher);
+    assert.equal(dispatchAfter.status,200,JSON.stringify(dispatchAfter.data));
+    for (const [index,delivery] of multi.data.deliveries.entries()) {
+      assertCalendarDate(dispatchAfter.data.find((row:{id:string})=>row.id===delivery.id).scheduledDate,scheduledDates[index],'диспетчерский список после назначения');
+    }
+    const driverList=await request('/driver/deliveries','GET',undefined,driver);
+    assert.equal(driverList.status,200,JSON.stringify(driverList.data));
+    for (const [index,delivery] of multi.data.deliveries.entries()) {
+      assertCalendarDate(driverList.data.find((row:{id:string})=>row.id===delivery.id).scheduledDate,scheduledDates[index],'список рейсов водителя');
     }
     const finishes=await Promise.all(multi.data.deliveries.map((delivery: {id:string})=>request(`/driver/deliveries/${delivery.id}/events`,'POST',{status:'delivered'},driver)));
     assert.ok(finishes.every((result)=>result.status===201),JSON.stringify(finishes));
     assert.equal((await request(`/orders/${multi.data.id}`,'GET',undefined,a)).data.status,'delivered','заказ закрывается после параллельного завершения поставок');
-    console.log('PASS: вход, сортировка и фильтры каталога, снимок единицы, идемпотентность, резерв, права, позиции объекта, конкурентные заказы и поставки');
+    console.log('PASS: вход, сортировка и фильтры каталога, числовые суммы заказов и границы точности, снимок единицы, идемпотентность, резерв, права, позиции объекта, конкурентные заказы и поставки');
   } finally { child.kill(); await pool.end(); }
 }
 main().catch((error)=>{console.error(error);process.exitCode=1;});

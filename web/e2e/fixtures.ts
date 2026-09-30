@@ -20,12 +20,22 @@ export async function mockCheckout(page: Page, handler: (route: Route, path: str
   await expect(page.getByRole('heading', { name: 'Оформление заказа', exact: true })).toBeVisible();
 }
 
-export async function loginBuyer(page: Page) {
+export type DemoRole = 'buyer' | 'supplier' | 'dispatcher' | 'driver' | 'admin';
+
+export async function loginRole(page: Page, role: DemoRole) {
   await page.getByRole('button', { name: 'Войти', exact: true }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Вход', exact: true });
-  await dialog.getByLabel('Электронная почта').fill('buyer@example.test');
+  await dialog.getByLabel('Электронная почта').fill(`${role}@example.test`);
   await dialog.getByLabel('Пароль').fill('Demo2026!');
+  const responsePromise = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/auth/login' && response.request().method() === 'POST');
   await dialog.getByRole('button', { name: 'Войти', exact: true }).click();
+  const response = await responsePromise;
+  expect(response.ok()).toBe(true);
+  expect((await response.json()).user.role).toBe(role);
   await expect(dialog).toBeHidden();
   await expect(page.getByRole('button', { name: 'Выйти', exact: true })).toBeVisible();
+}
+
+export async function loginBuyer(page: Page) {
+  await loginRole(page, 'buyer');
 }

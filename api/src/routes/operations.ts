@@ -14,7 +14,7 @@ export class OperationsController {
 
   @Get('dispatch/deliveries') async dispatchDeliveries(@Req() request: Request) {
     requireRole(await this.db.user(request.cookies?.om_session),'dispatcher','admin');
-    return this.db.rows('SELECT d.id,d.order_id AS "orderId",d.supplier_id AS "supplierId",s.name AS "supplierName",d.driver_id AS "driverId",u.name AS "driverName",d.status,d.scheduled_date AS "scheduledDate",o.address,o.status AS "orderStatus",d.route FROM deliveries d JOIN orders o ON o.id=d.order_id JOIN suppliers s ON s.id=d.supplier_id LEFT JOIN users u ON u.id=d.driver_id ORDER BY d.scheduled_date NULLS LAST,o.created_at DESC');
+    return this.db.rows(`SELECT d.id,d.order_id AS "orderId",d.supplier_id AS "supplierId",s.name AS "supplierName",d.driver_id AS "driverId",u.name AS "driverName",d.status,to_char(d.scheduled_date,'YYYY-MM-DD') AS "scheduledDate",o.address,o.status AS "orderStatus",d.route FROM deliveries d JOIN orders o ON o.id=d.order_id JOIN suppliers s ON s.id=d.supplier_id LEFT JOIN users u ON u.id=d.driver_id ORDER BY d.scheduled_date NULLS LAST,o.created_at DESC`);
   }
 
   @Patch('dispatch/deliveries/:id') async assign(@Req() request: Request,@Param('id') id: string,@Body() body: Record<string,unknown>) {
@@ -28,13 +28,13 @@ export class OperationsController {
       if (!delivery.rows[0]) throw new ApiError(404,'not_found','Поставка не найдена');
       if (delivery.rows[0].order_status==='awaiting_payment') throw new ApiError(409,'payment_required','Сначала подтвердите учебную оплату');
       if (!['pending','assigned'].includes(delivery.rows[0].status)) throw new ApiError(409,'invalid_status','Рейс уже выполняется');
-      return (await client.query('UPDATE deliveries SET driver_id=$1,scheduled_date=$2,status=$3 WHERE id=$4 RETURNING id,order_id AS "orderId",driver_id AS "driverId",scheduled_date AS "scheduledDate",status',[driverId,scheduledDate,'assigned',id])).rows[0];
+      return (await client.query(`UPDATE deliveries SET driver_id=$1,scheduled_date=$2,status=$3 WHERE id=$4 RETURNING id,order_id AS "orderId",driver_id AS "driverId",to_char(scheduled_date,'YYYY-MM-DD') AS "scheduledDate",status`,[driverId,scheduledDate,'assigned',id])).rows[0];
     });
   }
 
   @Get('driver/deliveries') async driverDeliveries(@Req() request: Request) {
     const user = requireRole(await this.db.user(request.cookies?.om_session),'driver');
-    return this.db.rows('SELECT d.id,d.order_id AS "orderId",d.status,d.scheduled_date AS "scheduledDate",o.address,d.route,s.name AS "supplierName" FROM deliveries d JOIN orders o ON o.id=d.order_id JOIN suppliers s ON s.id=d.supplier_id WHERE d.driver_id=$1 ORDER BY d.scheduled_date NULLS LAST',[user.id]);
+    return this.db.rows(`SELECT d.id,d.order_id AS "orderId",d.status,to_char(d.scheduled_date,'YYYY-MM-DD') AS "scheduledDate",o.address,d.route,s.name AS "supplierName" FROM deliveries d JOIN orders o ON o.id=d.order_id JOIN suppliers s ON s.id=d.supplier_id WHERE d.driver_id=$1 ORDER BY d.scheduled_date NULLS LAST`,[user.id]);
   }
 
   @Post('driver/deliveries/:id/events') async event(@Req() request: Request,@Param('id') id: string,@Body() body: Record<string,unknown>) {

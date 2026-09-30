@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, ShoppingBag, Truck } from 'lucide-react';
 import { api, type CartItem, type Offer, type Product, type Project, money, quantityUnit } from '@/lib/api';
+import { formatCalendarDate } from '@/lib/calendar-date';
 import { readCart } from '@/lib/storage';
 
 type Need = NonNullable<Project['items']>[number];
@@ -80,7 +81,7 @@ export function ProcurementPlan({project,addToCart}:{project:Project;addToCart:(
       const key=needKey(need,index);
       const offer=available.find(value=>value.id===selected[key]);
       return <div className="plan-offer-row" key={key}>
-        <div><b>{need.productName||product?.name||need.productId}</b><small>{quantityUnit(need.quantity,need.unit||product?.unit||'ед.')}{need.stageDate?` · к ${new Date(need.stageDate).toLocaleDateString('ru-RU')}`:''}</small></div>
+        <div><b>{need.productName||product?.name||need.productId}</b><small>{quantityUnit(need.quantity,need.unit||product?.unit||'ед.')}{need.stageDate?` · к ${formatCalendarDate(need.stageDate)}`:''}</small></div>
         {available.length?<><label>Поставщик и предложение<select value={selected[key]||''} onChange={event=>{setQuote(null);setSelected(current=>({...current,[key]:event.target.value}));}}>{available.map(value=><option value={value.id} key={value.id}>{value.supplierName} · {money(value.priceKopecks)} / {product?.unit||'ед.'} · {value.deliveryDays} дн.</option>)}</select></label><div className="plan-offer-cost"><span>Материалы {money((offer?.priceKopecks||0)*need.quantity)}</span><span>Доставка от {money(offer?.deliveryCostKopecks)}</span></div></>:<div className="plan-unavailable">Нет предложения на нужное количество и дату. <Link href={`/product/${need.productId}`}>Смотреть товар</Link></div>}
       </div>;
     })}</div>:<p className="muted">Добавьте материалы в перечень, чтобы рассчитать закупку.</p>}
