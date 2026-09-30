@@ -1,4 +1,7 @@
+'use client';
+
 import Image from 'next/image';
+import { useState } from 'react';
 import type { Product } from '@/lib/api';
 
 const categoryPhotos = {
@@ -10,14 +13,16 @@ const categoryPhotos = {
 } as const;
 
 export function MaterialArt({ product, large = false }: { product: Product; large?: boolean }) {
+  const [failedImage, setFailedImage] = useState<string | null>(null);
   const text = `${product.name} ${typeof product.category === 'string' ? product.category : product.category.name}`.toLowerCase();
   const kind = /кирпич|блок|газобетон/.test(text) ? 'brick' : /плитк|керамогранит/.test(text) ? 'tile' : /краск|грунт|лак/.test(text) ? 'paint' : /утепл|минват|изоляц/.test(text) ? 'insulation' : /доск|брус|пиломатериал|древес/.test(text) ? 'wood' : /труб|кабел|электр/.test(text) ? 'pipe' : /цемент|смес|штукатур|клей|шпаклев/.test(text) ? 'mix' : 'general';
-  const photo = categoryPhotos[kind as keyof typeof categoryPhotos];
+  const productPhoto = product.imageUrl && (/^https:\/\//.test(product.imageUrl) || product.imageUrl.startsWith('/images/')) && product.imageUrl !== failedImage ? product.imageUrl : undefined;
+  const photo = productPhoto || categoryPhotos[kind as keyof typeof categoryPhotos];
 
   if (photo) {
     return <div className={`material-art material-photo${large ? ' large' : ''}`}>
-      <Image src={photo} alt={`Фото категории «${typeof product.category === 'string' ? product.category : product.category.name}»`} fill sizes={large ? '(max-width: 820px) 100vw, 50vw' : '(max-width: 560px) 100vw, (max-width: 1100px) 50vw, 25vw'} />
-      <span className="photo-note">Фото категории</span>
+      <Image src={photo} alt={productPhoto ? product.name : `Фото категории «${typeof product.category === 'string' ? product.category : product.category.name}»`} fill unoptimized={Boolean(productPhoto?.startsWith('https://'))} referrerPolicy="no-referrer" onError={productPhoto ? () => setFailedImage(productPhoto) : undefined} sizes={large ? '(max-width: 820px) 100vw, 50vw' : '(max-width: 560px) 100vw, (max-width: 1100px) 50vw, 25vw'} />
+      <span className="photo-note">{productPhoto ? 'Фото товара' : 'Фото категории'}</span>
     </div>;
   }
 

@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Param, Query, Body, Req } from '@nestjs/c
 import type { Request } from 'express';
 import { Db } from '../db';
 import { ApiError, positiveInt, nonnegativeInt, requireRole, uuidField } from '../security';
+import { earliestDateInAstrakhan } from '../calendar-date';
 
 @Controller('api/v1')
 export class CatalogController {
@@ -42,8 +43,9 @@ export class CatalogController {
   @Get('products/:id') async product(@Param('id') id: string) {
     const product = await this.db.one('SELECT p.id,p.slug,p.name,p.category_id AS "categoryId",c.name AS category,p.unit,p.image_url AS "imageUrl",p.description,p.specs FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id::text=$1 OR p.slug=$1',[id]);
     if (!product) throw new ApiError(404,'not_found','Товар не найден');
-    const offers = await this.db.rows('SELECT o.id,o.supplier_id AS "supplierId",s.name AS "supplierName",o.warehouse_id AS "warehouseId",w.name AS "warehouseName",o.price_kopecks AS "priceKopecks",o.stock,o.delivery_days AS "deliveryDays",o.delivery_cost_kopecks AS "deliveryCostKopecks" FROM offers o JOIN suppliers s ON s.id=o.supplier_id JOIN warehouses w ON w.id=o.warehouse_id WHERE o.product_id=$1 AND o.active ORDER BY o.price_kopecks',[product.id]);
-    return {...product,offers};
+    const offers = await this.db.rows<{deliveryDays:number}>('SELECT o.id,o.supplier_id AS "supplierId",s.name AS "supplierName",o.warehouse_id AS "warehouseId",w.name AS "warehouseName",w.address AS "warehouseAddress",o.price_kopecks AS "priceKopecks",o.stock,o.delivery_days AS "deliveryDays",o.delivery_cost_kopecks AS "deliveryCostKopecks" FROM offers o JOIN suppliers s ON s.id=o.supplier_id JOIN warehouses w ON w.id=o.warehouse_id WHERE o.product_id=$1 AND o.active ORDER BY o.price_kopecks',[product.id]);
+    const now = new Date();
+    return {...product,offers:offers.map(offer=>({...offer,earliestDeliveryDate:earliestDateInAstrakhan(offer.deliveryDays,now)}))};
   }
 
   @Get('supplier/offers') async supplierOffers(@Req() request: Request) {

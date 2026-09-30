@@ -260,6 +260,13 @@ async function main() {
     assert.equal(listBefore.data.find((entry:{id:string})=>entry.id===project.data.id).itemCount,0);
     const projectItem=await request(`/projects/${project.data.id}/items`,'POST',{productId,quantity:2,stageDate:'2026-10-01'},a);
     assert.equal(projectItem.status,201,JSON.stringify(projectItem.data));
+    const projectBefore=await request(`/projects/${project.data.id}`,'GET',undefined,a);
+    assert.equal(projectBefore.status,200);
+    const foreignEdit=await request(`/projects/${project.data.id}`,'PATCH',{name:'Чужое название',address:'Чужой адрес'},b);
+    assert.equal(foreignEdit.status,404,'чужой объект нельзя изменить');
+    const projectAfter=await request(`/projects/${project.data.id}`,'GET',undefined,a);
+    assert.equal(projectAfter.status,200);
+    assert.deepEqual(projectAfter.data,projectBefore.data,'чужой PATCH сохраняет имя, адрес и позиции объекта владельца');
     const itemPath=`/projects/${project.data.id}/items/${projectItem.data.id}`;
     assert.equal((await request('/projects','GET',undefined,a)).data.find((entry:{id:string})=>entry.id===project.data.id).itemCount,1);
     assert.equal((await request(itemPath,'PATCH',{quantity:3},b)).status,404,'чужую позицию нельзя изменить');

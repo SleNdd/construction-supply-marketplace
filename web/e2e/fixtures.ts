@@ -1,6 +1,6 @@
 import { expect, type Page, type Route } from '@playwright/test';
 
-export const cartItem = { offerId: 'fixture-offer', quantity: 1, productId: 'fixture-product', productName: 'Материал для проверки UI', supplierName: 'Учебный поставщик', priceKopecks: 10000, unit: 'мешок' };
+export const cartItem = { offerId: 'aaaaaaaa-0000-0000-0000-000000000001', quantity: 1, productId: 'aaaaaaaa-0000-0000-0000-000000000002', productName: 'Материал для проверки UI', supplierName: 'Учебный поставщик', priceKopecks: 10000, unit: 'мешок' };
 export const validQuote = { productTotalKopecks: 10000, deliveryTotalKopecks: 20000, totalKopecks: 30000, unavailable: [], zoneAvailable: true, warnings: [] };
 export const reply = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 

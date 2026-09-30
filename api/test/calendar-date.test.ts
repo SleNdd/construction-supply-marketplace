@@ -9,3 +9,9 @@ test('календарь доставки переходит на следующ
   assert.equal(todayInAstrakhan(afterMidnight), '2026-10-01');
   assert.equal(earliestDateInAstrakhan(2, afterMidnight), '2026-10-03');
 });
+
+test('переход месяца и года сохраняет календарный срок доставки', () => {
+  assert.equal(earliestDateInAstrakhan(1, new Date('2026-12-31T19:59:59Z')), '2027-01-01');
+  assert.equal(earliestDateInAstrakhan(1, new Date('2026-12-31T20:00:00Z')), '2027-01-02');
+  assert.equal(earliestDateInAstrakhan(2, new Date('2028-02-28T20:00:00Z')), '2028-03-02');
+});

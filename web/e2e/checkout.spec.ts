@@ -1,5 +1,5 @@
 import { test, expect, type Request, type Route } from '@playwright/test';
-import { mockCheckout, reply, validQuote } from './fixtures';
+import { cartItem, mockCheckout, reply, validQuote } from './fixtures';
 
 test('UI с фикстурами: новый адрес получает расчёт и подсказки раньше старого', async ({ page }) => {
   let oldQuote: Route | undefined;
@@ -59,7 +59,7 @@ test('UI с фикстурами: новая дата сбрасывает ра�
   await expect(page.locator('.summary-total')).toContainText('После расчёта');
   await expect.poll(() => Boolean(datedQuote)).toBe(true);
   expect(datedQuote!.request().postDataJSON().requestedDate).toBe('2030-10-15');
-  await reply(datedQuote!, { ...validQuote, unavailable: [{ offerId: 'fixture-offer', reason: 'stock' }] });
+  await reply(datedQuote!, { ...validQuote, unavailable: [{ offerId: cartItem.offerId, reason: 'stock' }] });
   await expect(page.getByRole('main').getByRole('alert')).toContainText('Часть позиций недоступна');
   await expect(confirm).toBeDisabled();
 });

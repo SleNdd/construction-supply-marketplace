@@ -48,7 +48,14 @@ export function Marketplace() {
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 5000); return () => clearTimeout(timer); }, [notice]);
 
   const addToCart = useCallback((item: CartItem) => {
-    const current = readCart(); const found = current.find(entry => entry.offerId === item.offerId);
+    const current = readCart(); const found = current.find(entry => entry.offerId === item.offerId.toLowerCase());
+    const quantity = (found?.quantity || 0) + item.quantity;
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10000) {
+      setNotice('В корзине можно заказать до 10 000 единиц одного предложения'); return;
+    }
+    if (!found && current.length >= 50) {
+      setNotice('В корзине можно заказать до 50 разных предложений'); return;
+    }
     if (found) found.quantity += item.quantity; else current.push(item);
     saveCart(current); setNotice('Товар добавлен в корзину');
   }, []);
@@ -102,7 +109,7 @@ export function Marketplace() {
       {!['home','catalog','product','compare','cart','checkout','orders','projects','workspace'].includes(current) && <div className="container section"><h1>Страница не найдена</h1><Link href="/" className="btn btn-dark">На главную</Link></div>}
     </main>
 
-    <footer className="footer"><div className="container footer-grid"><div><div className="footer-brand">ОБЪЕКТ<span>МАРКЕТ</span></div><p>Материалы, поставщики и график работ — в одной системе.</p><small>Дипломный проект · Астрахань · 2026</small></div><div><b>Покупателям</b><Link href="/catalog">Каталог</Link><Link href="/compare">Сравнение</Link><Link href="/projects">Объекты</Link></div><div><b>Мой кабинет</b><Link href="/orders">Заказы</Link><Link href="/workspace">Рабочий кабинет</Link><Link href="/cart">Корзина</Link></div><div className="footer-note"><ShieldCheck size={22}/><p>Учебная версия. Платежи и движение транспорта моделируются. Данные поставщиков — демонстрационные.</p></div></div></footer>
+    <footer className="footer"><div className="container footer-grid"><div><div className="footer-brand">ОБЪЕКТ<span>МАРКЕТ</span></div><p>Материалы, поставщики и график работ — в одной системе.</p><small>Дипломный проект · Астрахань · 2026</small></div><div><b>Покупателям</b><Link href="/catalog">Каталог</Link><Link href="/compare">Сравнение</Link><Link href="/projects">Объекты</Link></div><div><b>Мой кабинет</b><Link href="/orders">Заказы</Link><Link href="/workspace">Рабочий кабинет</Link><Link href="/cart">Корзина</Link></div><div className="footer-note"><ShieldCheck size={22}/><p>Учебная версия. Оплата демонстрационная, статусы доставки отмечаются вручную. Поставщики вымышлены.</p></div></div></footer>
     {notice && <div className="toast" role="status"><Check size={17}/>{notice}<button onClick={() => setNotice('')} aria-label="Закрыть"><X size={15}/></button></div>}
     {authOpen && <AuthModal mode={authMode} setMode={setAuthMode} onClose={() => setAuthOpen(false)} onSuccess={onAuth} />}
   </>;

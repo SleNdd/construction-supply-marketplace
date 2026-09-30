@@ -1,7 +1,7 @@
 export type User = { id: string; name: string; email: string; role: 'buyer' | 'supplier' | 'dispatcher' | 'driver' | 'admin' };
 export type Category = { id: string; name: string; slug: string };
-export type Offer = { id: string; supplierId: string; supplierName: string; warehouseId: string; priceKopecks: number; stock: number; deliveryDays: number; deliveryCostKopecks: number };
-export type Product = { id: string; slug: string; name: string; category: string | Category; categoryId?: string; unit: string; imageUrl?: string; priceFromKopecks: number; description?: string; specs?: Record<string, string | number>; offers?: Offer[] };
+export type Offer = { id: string; supplierId: string; supplierName: string; warehouseId: string; warehouseName?: string; warehouseAddress?: string; priceKopecks: number; stock: number; deliveryDays: number; earliestDeliveryDate: string; deliveryCostKopecks: number };
+export type Product = { id: string; slug: string; name: string; category: string | Category; categoryId?: string; unit: string; imageUrl?: string; priceFromKopecks: number | null; description?: string; specs?: Record<string, string | number>; offers?: Offer[] };
 export type CartItem = { offerId: string; quantity: number; productId: string; productName: string; supplierName: string; priceKopecks: number; unit: string };
 export type Project = { id: string; name: string; address: string; itemCount?: number; stages?: unknown[]; items?: Array<{ id?: string; productId: string; productName?: string; unit?: string; quantity: number; product?: Product; stageDate?: string | null }> };
 
@@ -21,7 +21,17 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 }
 
 export const json = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body) });
-export const money = (kopecks: number | undefined) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: (kopecks || 0) % 100 ? 2 : 0, maximumFractionDigits: (kopecks || 0) % 100 ? 2 : 0 }).format((kopecks || 0) / 100);
+const wholeRubles = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 });
+
+export function money(kopecks: number | string | null | undefined): string {
+  if (kopecks == null) return '—';
+  if (typeof kopecks === 'number' && (!Number.isSafeInteger(kopecks) || kopecks < 0)) return '—';
+  if (typeof kopecks === 'string' && !/^\d+$/.test(kopecks)) return '—';
+  // Сумма отчёта приходит строкой bigint: преобразование в Number потеряет копейки.
+  const amount = BigInt(kopecks);
+  const fraction = amount % BigInt(100);
+  return `${wholeRubles.format(amount / BigInt(100))}${fraction ? `,${fraction.toString().padStart(2, '0')}` : ''}\u00a0₽`;
+}
 export const categoryName = (value: string | Category) => typeof value === 'string' ? value : value.name;
 export function quantityUnit(quantity: number, unit: string): string {
   const forms: Record<string, [string, string, string]> = {

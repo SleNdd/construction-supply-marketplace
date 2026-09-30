@@ -56,6 +56,7 @@ components:
         imageUrl: {type: string, nullable: true}
         description: {type: string}
         specs: {type: object, additionalProperties: true}
+        offers: {type: array, description: Предложения включены только в карточку товара, items: {$ref: '#/components/schemas/Offer'}}
         priceFromKopecks: {type: integer, nullable: true, description: 'Минимальная цена активных предложений; при inStock=true учитываются только предложения с stock > 0. null, если подходящих предложений нет.'}
     Offer:
       type: object
@@ -64,9 +65,12 @@ components:
         supplierId: {type: string, format: uuid}
         supplierName: {type: string}
         warehouseId: {type: string, format: uuid}
+        warehouseName: {type: string}
+        warehouseAddress: {type: string}
         priceKopecks: {type: integer}
         stock: {type: integer}
         deliveryDays: {type: integer}
+        earliestDeliveryDate: {type: string, format: date, description: 'Предварительная ближайшая дата по календарю Астрахани, вычисленная сервером при чтении карточки'}
         deliveryCostKopecks: {type: integer}
     Order:
       type: object
@@ -85,9 +89,9 @@ components:
       type: object
       properties:
         formula: {type: string}
-        calculatedConsumption: {type: number}
+        calculatedConsumption: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
         consumptionUnit: {type: string}
-        packages: {type: integer}
+        packages: {type: integer, minimum: 1, maximum: 1000000}
         packSize: {type: number}
   responses:
     Error:
@@ -271,7 +275,7 @@ paths:
       requestBody:
         required: true
         content: {application/json: {schema: {$ref: '#/components/schemas/Purchase'}}}
-      responses: {'201': {description: 'Строки, итоги, недоступные позиции, предупреждения и zoneAvailable для учебной зоны'}}
+      responses: {'201': {description: 'Строки с earliestDeliveryDate (YYYY-MM-DD по календарю Астрахани), итоги, недоступные позиции, предупреждения и zoneAvailable для учебной зоны'}}
   /projects:
     get:
       summary: Объекты покупателя
@@ -365,6 +369,7 @@ paths:
   /calculators/tiles:
     post:
       summary: Расчёт плитки с округлением до упаковки
+      description: Входы и вычисленный расход не превышают 1 000 000 000; количество упаковок — от 1 до 1 000 000. Переполнение и расход, исчезнувший при вычислении, отклоняются.
       requestBody:
         required: true
         content:
@@ -373,14 +378,17 @@ paths:
               type: object
               required: [areaM2, tileAreaM2, tilesPerPack]
               properties:
-                areaM2: {type: number, minimum: 0, exclusiveMinimum: true}
-                tileAreaM2: {type: number, minimum: 0, exclusiveMinimum: true}
-                tilesPerPack: {type: integer, minimum: 1}
-                wastePercent: {type: number, minimum: 0, default: 10}
-      responses: {'201': {description: Формула, расход и число упаковок, content: {application/json: {schema: {$ref: '#/components/schemas/Calculation'}}}}}
+                areaM2: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+                tileAreaM2: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+                tilesPerPack: {type: integer, minimum: 1, maximum: 1000000000}
+                wastePercent: {type: number, minimum: 0, maximum: 1000000000, default: 10}
+      responses:
+        '201': {description: Формула, расход и число упаковок, content: {application/json: {schema: {$ref: '#/components/schemas/Calculation'}}}}
+        '400': {$ref: '#/components/responses/Error'}
   /calculators/paint:
     post:
       summary: Расчёт краски с учётом слоёв
+      description: Входы и вычисленный расход не превышают 1 000 000 000; количество упаковок — от 1 до 1 000 000. Переполнение и расход, исчезнувший при вычислении, отклоняются.
       requestBody:
         required: true
         content:
@@ -389,15 +397,18 @@ paths:
               type: object
               required: [areaM2, rateLPerM2, packSizeL]
               properties:
-                areaM2: {type: number, minimum: 0, exclusiveMinimum: true}
-                rateLPerM2: {type: number, minimum: 0, exclusiveMinimum: true}
-                coats: {type: integer, minimum: 1, default: 2}
-                packSizeL: {type: number, minimum: 0, exclusiveMinimum: true}
-                wastePercent: {type: number, minimum: 0, default: 10}
-      responses: {'201': {description: Формула, расход и число упаковок, content: {application/json: {schema: {$ref: '#/components/schemas/Calculation'}}}}}
+                areaM2: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+                rateLPerM2: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+                coats: {type: integer, minimum: 1, maximum: 1000000000, default: 2}
+                packSizeL: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+                wastePercent: {type: number, minimum: 0, maximum: 1000000000, default: 10}
+      responses:
+        '201': {description: Формула, расход и число упаковок, content: {application/json: {schema: {$ref: '#/components/schemas/Calculation'}}}}
+        '400': {$ref: '#/components/responses/Error'}
   /calculators/dry-mix:
     post:
       summary: Расчёт сухой смеси по толщине слоя
+      description: Входы и вычисленный расход не превышают 1 000 000 000; количество упаковок — от 1 до 1 000 000. Переполнение и расход, исчезнувший при вычислении, отклоняются.
       requestBody:
         required: true
         content:
@@ -406,12 +417,14 @@ paths:
               type: object
               required: [areaM2, layerMm, rateKgPerM2Mm, packSizeKg]
               properties:
-                areaM2: {type: number, minimum: 0, exclusiveMinimum: true}
-                layerMm: {type: number, minimum: 0, exclusiveMinimum: true}
-                rateKgPerM2Mm: {type: number, minimum: 0, exclusiveMinimum: true}
-                packSizeKg: {type: number, minimum: 0, exclusiveMinimum: true}
-                wastePercent: {type: number, minimum: 0, default: 10}
-      responses: {'201': {description: Формула, расход и число упаковок, content: {application/json: {schema: {$ref: '#/components/schemas/Calculation'}}}}}
+                areaM2: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+                layerMm: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+                rateKgPerM2Mm: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+                packSizeKg: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+                wastePercent: {type: number, minimum: 0, maximum: 1000000000, default: 10}
+      responses:
+        '201': {description: Формула, расход и число упаковок, content: {application/json: {schema: {$ref: '#/components/schemas/Calculation'}}}}
+        '400': {$ref: '#/components/responses/Error'}
   /orders:
     get:
       summary: Заказы покупателя

@@ -83,7 +83,7 @@ export class OrdersController {
       const earliest = earliestDateInAstrakhan(line.deliveryDays,now);
       if (requestedDate < earliest) warnings.push(`${line.productName}: ближайшая дата поставки ${earliest}`);
     }
-    return {lines:result.lines,itemsTotalKopecks:result.itemsTotalKopecks,deliveryTotalKopecks:result.deliveryTotalKopecks,totalKopecks:result.totalKopecks,unavailable:result.unavailable,warnings,source:'demo',deliveryZone:'demo-astrakhan',zoneAvailable:inDemoZone(address),pricingNote:'Доставка считается один раз для каждого поставщика по максимальной ставке его предложений'};
+    return {lines:result.lines.map(line=>({...line,earliestDeliveryDate:earliestDateInAstrakhan(line.deliveryDays,now)})),itemsTotalKopecks:result.itemsTotalKopecks,deliveryTotalKopecks:result.deliveryTotalKopecks,totalKopecks:result.totalKopecks,unavailable:result.unavailable,warnings,source:'demo',deliveryZone:'demo-astrakhan',zoneAvailable:inDemoZone(address),pricingNote:'Доставка считается один раз для каждого поставщика по максимальной ставке его предложений'};
   }
 
   @Post('orders') async create(@Req() request: Request,@Body() body: Record<string,unknown>,@Headers('idempotency-key') key?: string) {
