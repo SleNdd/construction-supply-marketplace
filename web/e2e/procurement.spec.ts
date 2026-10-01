@@ -186,7 +186,7 @@ test('UI плана с фикстурами: две потребности пр�
 });
 
 
-test('UI плана с фикстурами: превышение лимита корзины не переносит часть плана', async ({ page }) => {
+test('UI плана с фикстурами: корзина с 50 предложениями не смешивается с планом', async ({ page }) => {
   const cart = Array.from({ length: 50 }, (_, index) => ({
     offerId: `cccccccc-0000-0000-0000-${String(index + 1).padStart(12, '0')}`,
     productId, productName: 'Уже выбранный материал', supplierName: 'Поставка А', quantity: 1, priceKopecks: 10000, unit: 'мешок',
@@ -196,20 +196,20 @@ test('UI плана с фикстурами: превышение лимита �
   const add = page.getByRole('button', { name: 'Добавить план в корзину' });
   await expect(add).toBeEnabled();
   await add.click();
-  await expect(page.getByRole('region', { name: 'Предложения для объекта' }).getByRole('alert')).toContainText('План не добавлен');
+  await expect(page.getByRole('region', { name: 'Предложения для объекта' }).getByRole('alert')).toContainText('для отдельной закупки этапа нужна пустая корзина');
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('objectmarket-cart')!))).toEqual(cart);
   expect(await page.evaluate(() => sessionStorage.getItem('objectmarket-project-checkout'))).toBeNull();
 });
 
 
-test('UI плана с фикстурами: суммарный лимит уже выбранного предложения сохраняет корзину', async ({ page }) => {
+test('UI плана с фикстурами: уже выбранное предложение сохраняется без смешения с планом', async ({ page }) => {
   const cart = [{ offerId: firstOffer, productId, productName: 'Материал для плана', supplierName: 'Поставка А', quantity: 9999, priceKopecks: 10000, unit: 'мешок' }];
   await page.addInitScript(items => localStorage.setItem('objectmarket-cart', JSON.stringify(items)), cart);
   await mockPlan(page, () => '2026-10-03', async route => reply(route, quote()), { duplicateNeed: true });
   const add = page.getByRole('button', { name: 'Добавить план в корзину' });
   await expect(add).toBeEnabled();
   await add.click();
-  await expect(page.getByRole('region', { name: 'Предложения для объекта' }).getByRole('alert')).toContainText('План не добавлен');
+  await expect(page.getByRole('region', { name: 'Предложения для объекта' }).getByRole('alert')).toContainText('для отдельной закупки этапа нужна пустая корзина');
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('objectmarket-cart')!))).toEqual(cart);
   expect(await page.evaluate(() => sessionStorage.getItem('objectmarket-project-checkout'))).toBeNull();
 });

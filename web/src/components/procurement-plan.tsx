@@ -1,11 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, RefreshCw, ShoppingBag, Truck } from 'lucide-react';
 import { api, type CartItem, type Offer, type Product, type Project, money, quantityUnit } from '@/lib/api';
 import { formatCalendarDate } from '@/lib/calendar-date';
-import { readCart } from '@/lib/storage';
+import { readCart, saveCart } from '@/lib/storage';
+import { checkoutItems, PROJECT_CHECKOUT_KEY } from '@/lib/project-checkout';
+import styles from './procurement-stage.module.css';
 
 type Need = NonNullable<Project['items']>[number];
 type Quote = {
@@ -29,21 +31,29 @@ function meetsStage(offer: Offer, stageDate?: string | null) {
   return !stageDate || Boolean(offer.earliestDeliveryDate && offer.earliestDeliveryDate <= stageDate);
 }
 
-export function ProcurementPlan({ project, addToCart }: { project: Project; addToCart: (item: CartItem) => void }) {
-  const needs = useMemo(() => project.items || [], [project.items]);
+export function ProcurementPlan({ project, refreshing = false }: { project: Project; addToCart: (item: CartItem) => void; refreshing?: boolean }) {
+  const groups = useMemo(() => {
+    const dates = [...new Set((project.items || []).map(item => item.stageDate || ''))];
+    return dates.sort((a, b) => !a ? 1 : !b ? -1 : a.localeCompare(b));
+  }, [project.items]);
+  const [selection, setSelection] = useState<{ projectId: string; date: string } | null>(null);
+  const stageDate = selection?.projectId === project.id && groups.includes(selection.date) ? selection.date : groups[0] || '';
+  const needs = useMemo(() => (project.items || []).filter(item => (item.stageDate || '') === stageDate), [project.items, stageDate]);
+  // Исчезнувший этап сразу переходит к первой существующей группе и не возвращается сам.
+  useEffect(() => { setSelection({ projectId: project.id, date: stageDate }); }, [project.id, stageDate]);
   const [attempt, setAttempt] = useState(0);
   const [catalog, setCatalog] = useState<CatalogState | null>(null);
   const [catalogFailure, setCatalogFailure] = useState<Failure | null>(null);
   const [quoteResult, setQuoteResult] = useState<{ key: string; value: Quote } | null>(null);
   const [quoteFailure, setQuoteFailure] = useState<Failure | null>(null);
-  const requestKey = JSON.stringify([project.id, needs, attempt]);
+  const requestKey = JSON.stringify([project.id, stageDate, needs, attempt, refreshing]);
   const currentCatalog = catalog?.key === requestKey ? catalog : null;
   const catalogError = catalogFailure?.key === requestKey ? catalogFailure.message : '';
   const loading = needs.length > 0 && !currentCatalog && !catalogError;
 
   useEffect(() => {
     setCatalog(null);
-    if (!needs.length) return;
+    if (!needs.length || refreshing) return;
     const controller = new AbortController();
     Promise.all([...new Set(needs.map(item => item.productId))].map(id => api<Product>(`/products/${id}`, { signal: controller.signal })))
       .then(rows => {
@@ -62,7 +72,7 @@ export function ProcurementPlan({ project, addToCart }: { project: Project; addT
         if (!controller.signal.aborted) setCatalogFailure({ key: requestKey, message: (issue as Error).message });
       });
     return () => controller.abort();
-  }, [requestKey, needs]);
+  }, [requestKey, needs, refreshing]);
 
   const chosen = useMemo(() => needs.flatMap((need, index) => {
     const offer = currentCatalog?.products[need.productId]?.offers?.find(row => row.id === currentCatalog.selected[needKey(need, index)]);
@@ -70,7 +80,7 @@ export function ProcurementPlan({ project, addToCart }: { project: Project; addT
   }), [needs, currentCatalog]);
   const quoteItems = useMemo(() => chosen.map(({ need, offer }) => ({ offerId: offer.id, quantity: need.quantity })), [chosen]);
   const quoteKey = currentCatalog && chosen.length === needs.length && needs.length > 0
-    ? JSON.stringify([requestKey, quoteItems, project.address]) : '';
+    ? JSON.stringify([requestKey, quoteItems, project.address, stageDate]) : '';
   // Ключ связывает сумму с текущими позициями: старый ответ нельзя добавить в корзину.
   const quote = quoteResult?.key === quoteKey ? quoteResult.value : null;
   const quoteError = quoteFailure?.key === quoteKey ? quoteFailure.message : '';
@@ -81,7 +91,7 @@ export function ProcurementPlan({ project, addToCart }: { project: Project; addT
     setQuoteFailure(null);
     if (!quoteKey) return;
     const controller = new AbortController();
-    api<Quote>('/quotes', { method: 'POST', body: JSON.stringify({ items: quoteItems, address: project.address }), signal: controller.signal })
+    api<Quote>('/quotes', { method: 'POST', body: JSON.stringify({ items: quoteItems, address: project.address, requestedDate: stageDate || undefined }), signal: controller.signal })
       .then(value => {
         if (!controller.signal.aborted) {
           setQuoteResult({ key: quoteKey, value });
@@ -92,7 +102,7 @@ export function ProcurementPlan({ project, addToCart }: { project: Project; addT
         if (!controller.signal.aborted) setQuoteFailure({ key: quoteKey, message: (issue as Error).message });
       });
     return () => controller.abort();
-  }, [quoteKey, quoteItems, project.address]);
+  }, [quoteKey, quoteItems, project.address, stageDate]);
 
   const stageConflicts = quote ? chosen.filter(({ need, offer }) => {
     if (!need.stageDate) return false;
@@ -103,28 +113,52 @@ export function ProcurementPlan({ project, addToCart }: { project: Project; addT
 
   const [addFailure, setAddFailure] = useState<Failure | null>(null);
   const addError = addFailure?.key === quoteKey ? addFailure.message : "";
+  const [addedKey, setAddedKey] = useState('');
+  const transferring = useRef(false);
 
   function addPlan() {
-    if (!canAdd || !currentCatalog) return;
+    if (!canAdd || !currentCatalog || transferring.current || addedKey === quoteKey) return;
     setAddFailure(null);
-    const cart = readCart();
-    const quantities = new Map(cart.map(item => [item.offerId, item.quantity]));
-    for (const { need, offer } of chosen) quantities.set(offer.id, (quantities.get(offer.id) || 0) + need.quantity);
-    if (quantities.size > 50 || [...quantities.values()].some(quantity => quantity > 10000)) {
-      setAddFailure({ key: quoteKey, message: 'План не добавлен: в корзине допускается до 50 предложений и до 10 000 единиц каждого. Уменьшите количество или освободите корзину.' });
-      return;
-    }
+    const items = new Map<string, CartItem>();
     for (const { need, offer } of chosen) {
       const product = currentCatalog.products[need.productId];
-      addToCart({ offerId: offer.id, quantity: need.quantity, productId: need.productId, productName: product.name, supplierName: offer.supplierName, priceKopecks: offer.priceKopecks, unit: product.unit });
+      if (!product || !Number.isInteger(need.quantity) || need.quantity < 1 || offer.stock < need.quantity || !meetsStage(offer, stageDate)) {
+        setAddFailure({ key: quoteKey, message: 'План не добавлен: обновите предложения и проверьте количество.' });
+        return;
+      }
+      const previous = items.get(offer.id);
+      items.set(offer.id, { offerId: offer.id, quantity: (previous?.quantity || 0) + need.quantity, productId: need.productId, productName: product.name, supplierName: offer.supplierName, priceKopecks: offer.priceKopecks, unit: product.unit });
     }
-    const items = readCart().map(({ offerId, quantity }) => ({ offerId, quantity })).sort((a, b) => a.offerId.localeCompare(b.offerId));
-    sessionStorage.setItem('objectmarket-project-checkout', JSON.stringify({ projectId: project.id, address: project.address, items }));
+    const cart = [...items.values()];
+    if (cart.length > 50 || cart.some(item => item.quantity > 10000)) {
+      setAddFailure({ key: quoteKey, message: 'План не добавлен: в корзине допускается до 50 предложений и до 10 000 единиц каждого. Уменьшите выбранный этап.' });
+      return;
+    }
+    if (readCart().length) {
+      setAddFailure({ key: quoteKey, message: 'План не добавлен: для отдельной закупки этапа нужна пустая корзина. Оформите текущую закупку или освободите корзину вручную.' });
+      return;
+    }
+    transferring.current = true;
+    let previousContext: string | null = null;
+    let contextWritten = false;
+    try {
+      previousContext = sessionStorage.getItem(PROJECT_CHECKOUT_KEY);
+      sessionStorage.setItem(PROJECT_CHECKOUT_KEY, JSON.stringify({ projectId: project.id, address: project.address, items: checkoutItems(cart), requestedDate: stageDate || null }));
+      contextWritten = true;
+      saveCart(cart);
+      setAddedKey(quoteKey);
+    } catch {
+      if (contextWritten) {
+        try { if (previousContext === null) sessionStorage.removeItem(PROJECT_CHECKOUT_KEY); else sessionStorage.setItem(PROJECT_CHECKOUT_KEY, previousContext); } catch { /* Хранилище браузера недоступно. */ }
+      }
+      setAddFailure({ key: quoteKey, message: 'Не удалось сохранить закупку в браузере. Проверьте корзину перед повтором.' });
+    } finally { transferring.current = false; }
   }
 
   return <section className="workspace-panel procurement-plan" aria-labelledby="procurement-heading">
     <div className="panel-heading"><div><span className="overline">ПЛАН ЗАКУПКИ</span><h2 id="procurement-heading">Предложения для объекта</h2></div><Truck size={23} /></div>
     <p className="muted">Сначала выбираем предложение по цене позиции с доставкой. Ближайшие даты рассчитаны сервером по календарю Астрахани. Итог пересчитывается по поставщикам; наличие и срок проверяются повторно при оформлении.</p>
+    {groups.length > 0 && <div className={styles.selector}><label>Этап закупки<select value={stageDate} onChange={event => setSelection({ projectId: project.id, date: event.target.value })}>{groups.map(date => <option key={date} value={date}>{date ? `К ${formatCalendarDate(date)}` : 'Без даты этапа'} · {(project.items || []).filter(item => (item.stageDate || '') === date).length} поз.</option>)}</select></label><p className="muted">В корзину попадут только материалы выбранного этапа. {stageDate ? 'Дата этапа станет желаемой датой заказа.' : 'Желаемую дату можно выбрать при оформлении.'} Желаемая дата не является подтверждением поставщика.</p></div>}
     {loading ? <div className="loading-row" role="status">Подбираем предложения…</div> : currentCatalog && needs.length > 0 ? <div className="plan-offers">{needs.map((need, index) => {
       const product = currentCatalog.products[need.productId];
       const offers = product?.offers || [];
@@ -153,6 +187,7 @@ export function ProcurementPlan({ project, addToCart }: { project: Project; addT
       {stageConflicts.map(({ need, offer }) => <p className="form-error" role="alert" key={need.id || `${need.productId}-${need.stageDate}`}>{need.productName}: срок предложения изменился и не подходит к этапу {formatCalendarDate(need.stageDate!)}. Обновите предложения.</p>)}
     </div>}
     {addError && <p className="form-error" role="alert">{addError}</p>}
-    {needs.length > 0 && <div className="plan-actions"><button className="btn btn-dark" disabled={!canAdd} onClick={addPlan}><ShoppingBag size={16} /> Добавить план в корзину</button><Link href="/cart" className="text-link">Открыть корзину <ArrowRight size={16} /></Link><button className="link-button" onClick={() => setAttempt(value => value + 1)} disabled={loading}><RefreshCw size={14} /> Обновить предложения</button></div>}
+    {addedKey === quoteKey && addedKey && <p className={styles.success} role="status">Выбранный этап добавлен в корзину. Перейдите к оформлению отдельного заказа.</p>}
+    {needs.length > 0 && <div className="plan-actions"><button className="btn btn-dark" disabled={!canAdd || addedKey === quoteKey} onClick={addPlan}><ShoppingBag size={16} /> {groups.length > 1 ? 'Добавить этап в корзину' : 'Добавить план в корзину'}</button><Link href="/cart" className="text-link">Открыть корзину <ArrowRight size={16} /></Link><button className="link-button" onClick={() => setAttempt(value => value + 1)} disabled={loading}><RefreshCw size={14} /> Обновить предложения</button></div>}
   </section>;
 }
