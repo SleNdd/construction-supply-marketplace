@@ -53,11 +53,105 @@ components:
         category: {type: string}
         categoryId: {type: string, format: uuid}
         unit: {type: string}
+        packaging: {$ref: '#/components/schemas/Packaging'}
         imageUrl: {type: string, nullable: true}
         description: {type: string}
         specs: {type: object, additionalProperties: true}
         offers: {type: array, description: Предложения включены только в карточку товара, items: {$ref: '#/components/schemas/Offer'}}
         priceFromKopecks: {type: integer, nullable: true, description: 'Минимальная цена активных предложений; при inStock=true учитываются только предложения с stock > 0. null, если подходящих предложений нет.'}
+    Packaging:
+      description: 'Структурированная фасовка или null. tiles — коробка, paint — ведро, dry-mix — мешок. Все предложения товара используют эту фасовку.'
+      type: object
+      nullable: true
+      oneOf:
+        - type: object
+          nullable: true
+          enum: [null]
+        - type: object
+          additionalProperties: false
+          required: [kind, tileAreaM2, tilesPerPack]
+          properties:
+            kind: {type: string, enum: [tiles]}
+            tileAreaM2: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+            tilesPerPack: {type: integer, minimum: 1, maximum: 1000000000}
+        - type: object
+          additionalProperties: false
+          required: [kind, packSizeL]
+          properties:
+            kind: {type: string, enum: [paint]}
+            packSizeL: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+        - type: object
+          additionalProperties: false
+          required: [kind, packSizeKg]
+          properties:
+            kind: {type: string, enum: [dry-mix]}
+            packSizeKg: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+    MaterialInputs:
+      description: 'Набор должен соответствовать kind. Неизвестные поля, фасовка клиента и null в числах отклоняются. Запас по умолчанию 10%, слои 2.'
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [areaM2]
+          properties:
+            areaM2: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+            wastePercent: {type: number, minimum: 0, maximum: 1000000000, default: 10}
+        - type: object
+          additionalProperties: false
+          required: [areaM2, rateLPerM2]
+          properties:
+            areaM2: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+            rateLPerM2: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+            coats: {type: integer, minimum: 1, maximum: 1000000000, default: 2}
+            wastePercent: {type: number, minimum: 0, maximum: 1000000000, default: 10}
+        - type: object
+          additionalProperties: false
+          required: [areaM2, layerMm, rateKgPerM2Mm]
+          properties:
+            areaM2: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+            layerMm: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+            rateKgPerM2Mm: {type: number, minimum: 0, exclusiveMinimum: true, maximum: 1000000000}
+            wastePercent: {type: number, minimum: 0, maximum: 1000000000, default: 10}
+    MaterialRequest:
+      type: object
+      additionalProperties: false
+      required: [productId, kind, inputs]
+      properties:
+        productId: {type: string, format: uuid}
+        kind: {type: string, enum: [tiles, paint, dry-mix]}
+        inputs: {$ref: '#/components/schemas/MaterialInputs'}
+    FromCalculationRequest:
+      type: object
+      additionalProperties: false
+      required: [productId, kind, inputs]
+      properties:
+        productId: {type: string, format: uuid}
+        kind: {type: string, enum: [tiles, paint, dry-mix]}
+        inputs: {$ref: '#/components/schemas/MaterialInputs'}
+        stageDate: {type: string, format: date, nullable: true}
+    MaterialCalculation:
+      allOf:
+        - {$ref: '#/components/schemas/Calculation'}
+        - type: object
+          properties:
+            productId: {type: string, format: uuid}
+            unit: {type: string}
+            packaging: {$ref: '#/components/schemas/Packaging'}
+            coverage: {type: number, minimum: 0, exclusiveMinimum: true}
+            coverageUnit: {type: string, enum: [м², л, кг]}
+    FromCalculationResponse:
+      type: object
+      required: [item, calculation]
+      properties:
+        item:
+          type: object
+          properties:
+            id: {type: string, format: uuid}
+            productId: {type: string, format: uuid}
+            productName: {type: string}
+            unit: {type: string}
+            quantity: {type: integer, minimum: 1, maximum: 1000000}
+            stageDate: {type: string, format: date, nullable: true}
+        calculation: {$ref: '#/components/schemas/MaterialCalculation'}
     Offer:
       type: object
       properties:
@@ -262,10 +356,12 @@ paths:
                 imageUrl: {type: string, nullable: true}
                 description: {type: string}
                 specs: {type: object, additionalProperties: true}
+                packaging: {$ref: '#/components/schemas/Packaging'}
       responses: {'201': {description: Товар создан}}
   /admin/products/{id}:
     patch:
       summary: Изменить товар, роль admin
+      description: 'Можно редактировать описание, название, фото и характеристики. Передача unit или packaging всегда даёт 400 immutable_packaging; для иной единицы или фасовки создаётся новый товар.'
       security: [{session: []}]
       parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
       responses: {'200': {description: Товар изменён}}
@@ -366,6 +462,39 @@ paths:
       responses:
         '204': {description: Позиция удалена}
         '404': {$ref: '#/components/responses/Error'}
+  /calculators/material:
+    post:
+      summary: Рассчитать потребность с фасовкой выбранного товара
+      description: 'Публичный preview; сервер берёт размер упаковки из товара. kind и набор inputs должны соответствовать фасовке. Без фасовки — 400 packaging_unavailable; несовместимый вид — packaging_mismatch. Предел результата 1000000 упаковок, текущей закупки — 10000 единиц предложения.'
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/MaterialRequest'}}}
+      responses:
+        '201':
+          description: Расчёт и покрытие упаковок
+          content: {application/json: {schema: {$ref: '#/components/schemas/MaterialCalculation'}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /projects/{id}/items/from-calculation:
+    post:
+      summary: Добавить пересчитанную сервером потребность в свой объект
+      security: [{session: []}]
+      description: 'Ключ хранится до удаления объекта. UUID приводится к нижнему регистру, defaults inputs заполнены, отсутствующая дата нормализуется в null. Одинаковый ключ и нормализованное тело возвращают исходный ответ; другое тело — 409 idempotency_conflict. После удаления позиции повтор — 409 calculation_item_deleted. Параллельные повторы сериализованы, позиция и ключ создаются одной транзакцией. Потребность допускает до 1000000 упаковок; лимит текущей закупки остаётся 10000.'
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9._:-]+$'}}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/FromCalculationRequest'}}}
+      responses:
+        '201':
+          description: Позиция и исходный расчёт
+          content: {application/json: {schema: {$ref: '#/components/schemas/FromCalculationResponse'}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
   /calculators/tiles:
     post:
       summary: Расчёт плитки с округлением до упаковки

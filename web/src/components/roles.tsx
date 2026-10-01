@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowRight, Building2, CalendarDays, Check, ClipboardList, LayoutDashboard, MapPin, Package, Plus, RefreshCw, Truck, UserRound } from 'lucide-react';
-import { api, type Category, type Product, type User, money } from '@/lib/api';
+import { api, type Category, type Product, type ProductPackaging, type User, money } from '@/lib/api';
 import { formatCalendarDate } from '@/lib/calendar-date';
+import { packagingLabel } from '@/lib/packaging';
 import { AuthRequired, ErrorPanel, PageHeading } from './marketplace';
 import { MapPanel } from './route-map';
 import { Status } from './orders';
@@ -15,7 +16,9 @@ type Warehouse={id:string;name:string};
 type Driver={id:string;name:string};
 type Delivery={id:string;orderId:string;supplierName:string;driverId?:string;driverName?:string;status:string;scheduledDate?:string;address:string;route?:number[][]};
 type Summary={orders:{count:number;totalKopecks:string|number};deliveries:Array<{status:string;count:number}>;note:string};
-type ProductDraft={name:string;slug:string;categoryId:string;unit:string;imageUrl:string;description:string;specs:string};
+type ProductDraft={name:string;slug:string;categoryId:string;unit:string;imageUrl:string;description:string;specs:string;packagingKind:ProductPackaging['kind']|'';tileAreaM2:string;tilesPerPack:string;packSize:string};
+const packagingUnits:Record<ProductPackaging['kind'],string>={tiles:'коробка',paint:'ведро','dry-mix':'мешок'};
+const packagingSummary=(packaging:ProductPackaging|null|undefined)=>packaging?packagingLabel(packaging):'Фасовка не задана';
 
 export function RoleWorkspace({user,onAuth}:{user:User|null;onAuth:()=>void}) {
   return <div className="container page-section"><PageHeading eyebrow="ЛИЧНЫЙ КАБИНЕТ" title={user?`Здравствуйте, ${user.name.split(' ')[0]}`:'Рабочий кабинет'} description={user?`Роль: ${({buyer:'покупатель',supplier:'поставщик',dispatcher:'диспетчер',driver:'водитель',admin:'администратор'} as Record<string,string>)[user.role]}. Здесь собраны ваши основные действия.`:'Войдите, чтобы увидеть рабочие инструменты.'}/>{!user?<AuthRequired onAuth={onAuth}/>:user.role==='buyer'?<BuyerDashboard/>:user.role==='supplier'?<SupplierDashboard/>:user.role==='dispatcher'?<DispatcherDashboard/>:user.role==='driver'?<DriverDashboard/>:<AdminDashboard/>}</div>;
@@ -57,7 +60,7 @@ function AdminDashboard() {
   const [categoryEdit,setCategoryEdit]=useState<Category|null|undefined>(undefined);
   const [categoryDraft,setCategoryDraft]=useState({name:'',slug:''});
   const [productEdit,setProductEdit]=useState<Product|null|undefined>(undefined);
-  const [productDraft,setProductDraft]=useState<ProductDraft>({name:'',slug:'',categoryId:'',unit:'',imageUrl:'',description:'',specs:'{}'});
+  const [productDraft,setProductDraft]=useState<ProductDraft>({name:'',slug:'',categoryId:'',unit:'',imageUrl:'',description:'',specs:'{}',packagingKind:'',tileAreaM2:'',tilesPerPack:'',packSize:''});
   const [busy,setBusy]=useState(false);
   const categoryDialogRef=useDialogFocus(categoryEdit!==undefined,()=>setCategoryEdit(undefined));
   const productDialogRef=useDialogFocus(productEdit!==undefined,()=>setProductEdit(undefined));
@@ -127,11 +130,26 @@ function AdminDashboard() {
       setError('Характеристики должны быть объектом JSON, например {"прочность":"М150"}.');
       return;
     }
+    let packaging:ProductPackaging|null=null;
+    if (!productEdit && productDraft.packagingKind) {
+      const kind=productDraft.packagingKind;
+      const size=Number(kind==='tiles'?productDraft.tileAreaM2:productDraft.packSize);
+      const tiles=Number(productDraft.tilesPerPack);
+      if (!Number.isFinite(size) || size<=0 || (kind==='tiles' && (!Number.isSafeInteger(tiles) || tiles<=0))) {
+        setError('Укажите положительный размер фасовки; число плиток в коробке должно быть целым и положительным.');
+        return;
+      }
+      if (unit!==packagingUnits[kind]) {
+        setError(`Для выбранной фасовки единица продажи — ${packagingUnits[kind]}.`);
+        return;
+      }
+      packaging=kind==='tiles'?{kind,tileAreaM2:size,tilesPerPack:tiles}:kind==='paint'?{kind,packSizeL:size}:{kind,packSizeKg:size};
+    }
     setBusy(true);setError('');setNotice('');
     try {
       await api(productEdit ? `/admin/products/${productEdit.id}` : '/admin/products',{
         method:productEdit?'PATCH':'POST',
-        body:JSON.stringify({name,slug,unit,categoryId:productDraft.categoryId,imageUrl:imageUrl||null,description:productDraft.description.trim(),specs})
+        body:JSON.stringify({name,slug,categoryId:productDraft.categoryId,imageUrl:imageUrl||null,description:productDraft.description.trim(),specs,...(!productEdit?{unit,packaging}:{})})
       });
       setProductEdit(undefined);
       setNotice(productEdit?'Товар обновлён.':'Товар добавлен.');
@@ -153,7 +171,8 @@ function AdminDashboard() {
       name:product?.name||'',slug:product?.slug||'',
       categoryId:product?.categoryId||categories.find(category=>category.name===categoryName)?.id||categories[0]?.id||'',
       unit:product?.unit||'',imageUrl:product?.imageUrl||'',
-      description:product?.description||'',specs:JSON.stringify(product?.specs||{},null,2)
+      description:product?.description||'',specs:JSON.stringify(product?.specs||{},null,2),
+      packagingKind:'',tileAreaM2:'',tilesPerPack:'',packSize:''
     });
   };
 
@@ -171,10 +190,10 @@ function AdminDashboard() {
     <div className="workspace-panel admin-section">
       <div className="panel-heading"><div><span className="overline">СПРАВОЧНИК</span><h2>Товары <small>({total})</small></h2></div><button className="btn btn-dark" onClick={()=>openProduct(null)}><Plus size={16}/> Товар</button></div>
       <form className="admin-search" onSubmit={event=>{event.preventDefault();setPage(1);setSearch(query.trim());}}><label htmlFor="admin-product-search">Поиск по названию или описанию</label><div><input id="admin-product-search" value={query} onChange={event=>setQuery(event.target.value)} placeholder="Например, кирпич"/><button className="btn btn-outline" type="submit">Найти</button></div></form>
-      {products.length?<div className="admin-product-list">{products.map(product=><div className="admin-product-row" key={product.id}><div><b>{product.name}</b><small>{typeof product.category==='string'?product.category:product.category.name} · {product.unit} · {product.priceFromKopecks?money(product.priceFromKopecks):'Без предложений'}</small></div><button className="btn btn-outline" onClick={()=>openProduct(product)}>Изменить</button></div>)}</div>:!loading&&<div className="empty-state">Товары не найдены.</div>}
+      {products.length?<div className="admin-product-list">{products.map(product=><div className="admin-product-row" key={product.id}><div><b>{product.name}</b><small>{typeof product.category==='string'?product.category:product.category.name} · {product.unit} · {product.priceFromKopecks?money(product.priceFromKopecks):'Без предложений'}</small><small>{packagingSummary(product.packaging)}</small></div><button className="btn btn-outline" onClick={()=>openProduct(product)}>Изменить</button></div>)}</div>:!loading&&<div className="empty-state">Товары не найдены.</div>}
       {total>limit&&<div className="admin-pagination"><button className="btn btn-outline" disabled={page===1||loading} onClick={()=>setPage(page-1)}>Назад</button><span>Страница {page} из {Math.ceil(total/limit)}</span><button className="btn btn-outline" disabled={page>=Math.ceil(total/limit)||loading} onClick={()=>setPage(page+1)}>Далее</button></div>}
     </div>
     {categoryEdit!==undefined&&<div className="modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setCategoryEdit(undefined);}}><div ref={categoryDialogRef} tabIndex={-1} className="auth-modal wide-modal" role="dialog" aria-modal="true" aria-labelledby="admin-category-title"><button className="icon-button modal-close" aria-label="Закрыть" onClick={()=>setCategoryEdit(undefined)}>×</button><span className="overline">СПРАВОЧНИК</span><h2 id="admin-category-title">{categoryEdit?'Изменить категорию':'Новая категория'}</h2><form className="form-stack" onSubmit={saveCategory}><label>Название<input required maxLength={100} value={categoryDraft.name} onChange={event=>setCategoryDraft({...categoryDraft,name:event.target.value})}/></label><label>Адрес категории<input required maxLength={100} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={categoryDraft.slug} onChange={event=>setCategoryDraft({...categoryDraft,slug:event.target.value})} placeholder="suhie-smesi"/></label><p className="form-info">Латинские буквы, цифры и дефисы. Этот адрес используется в каталоге.</p>{error&&<p className="form-error" role="alert">{error}</p>}<button className="btn btn-dark" disabled={busy} type="submit">{busy?'Сохраняем…':'Сохранить'}</button></form></div></div>}
-    {productEdit!==undefined&&<div className="modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setProductEdit(undefined);}}><div ref={productDialogRef} tabIndex={-1} className="auth-modal wide-modal" role="dialog" aria-modal="true" aria-labelledby="admin-product-title"><button className="icon-button modal-close" aria-label="Закрыть" onClick={()=>setProductEdit(undefined)}>×</button><span className="overline">КАТАЛОГ</span><h2 id="admin-product-title">{productEdit?'Изменить товар':'Новый товар'}</h2><form className="form-stack admin-product-form" onSubmit={saveProduct}><label>Название<input required maxLength={200} value={productDraft.name} onChange={event=>setProductDraft({...productDraft,name:event.target.value})}/></label><div className="admin-form-grid"><label>Категория<select required value={productDraft.categoryId} onChange={event=>setProductDraft({...productDraft,categoryId:event.target.value})}><option value="">Выберите категорию</option>{categories.map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label>Единица измерения<input required maxLength={30} value={productDraft.unit} onChange={event=>setProductDraft({...productDraft,unit:event.target.value})} placeholder="мешок"/></label></div><label>Адрес товара<input required maxLength={100} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={productDraft.slug} onChange={event=>setProductDraft({...productDraft,slug:event.target.value})} placeholder="cement-m500"/></label><label>Описание<textarea maxLength={2000} rows={3} value={productDraft.description} onChange={event=>setProductDraft({...productDraft,description:event.target.value})}/></label><label>Изображение (необязательно)<input value={productDraft.imageUrl} onChange={event=>setProductDraft({...productDraft,imageUrl:event.target.value})} placeholder="https://... или /images/..."/></label><label>Характеристики, JSON<textarea rows={4} value={productDraft.specs} onChange={event=>setProductDraft({...productDraft,specs:event.target.value})} spellCheck={false}/></label><p className="form-info">Пример: { '{"марка":"М500","вес":50}' }. Если характеристик нет, оставьте пустой объект {}.</p>{error&&<p className="form-error" role="alert">{error}</p>}<button className="btn btn-dark" disabled={busy} type="submit">{busy?'Сохраняем…':'Сохранить товар'}</button></form></div></div>}
+    {productEdit!==undefined&&<div className="modal-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setProductEdit(undefined);}}><div ref={productDialogRef} tabIndex={-1} className="auth-modal wide-modal" role="dialog" aria-modal="true" aria-labelledby="admin-product-title"><button className="icon-button modal-close" aria-label="Закрыть" onClick={()=>setProductEdit(undefined)}>×</button><span className="overline">КАТАЛОГ</span><h2 id="admin-product-title">{productEdit?'Изменить товар':'Новый товар'}</h2><form className="form-stack admin-product-form" onSubmit={saveProduct}><label>Название<input required maxLength={200} value={productDraft.name} onChange={event=>setProductDraft({...productDraft,name:event.target.value})}/></label><div className="admin-form-grid"><label>Категория<select required value={productDraft.categoryId} onChange={event=>setProductDraft({...productDraft,categoryId:event.target.value})}><option value="">Выберите категорию</option>{categories.map(category=><option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label>Единица измерения<input required readOnly={!!productEdit || !!productDraft.packagingKind} maxLength={30} value={productDraft.unit} onChange={event=>setProductDraft({...productDraft,unit:event.target.value})} placeholder="мешок"/></label></div>{productEdit?<><p className="form-info">Фасовка: {packagingSummary(productEdit.packaging)}</p><p className="form-info">Единица продажи и фасовка сохраняются. Для другой фасовки создайте новый товар.</p></>:<><label htmlFor="admin-product-packaging">Фасовка</label><select id="admin-product-packaging" value={productDraft.packagingKind} onChange={event=>{const kind=event.target.value as ProductDraft['packagingKind'];setProductDraft({...productDraft,packagingKind:kind,unit:kind?packagingUnits[kind]:productDraft.unit});}}><option value="">Не задана</option><option value="tiles">Плитка в коробках</option><option value="paint">Краска в вёдрах</option><option value="dry-mix">Сухая смесь в мешках</option></select>{productDraft.packagingKind==='tiles'?<div className="admin-form-grid"><label htmlFor="admin-product-tile-area">Площадь одной плитки, м²<input id="admin-product-tile-area" required type="number" min="0" step="any" value={productDraft.tileAreaM2} onChange={event=>setProductDraft({...productDraft,tileAreaM2:event.target.value})}/></label><label htmlFor="admin-product-tile-count">Плиток в коробке<input id="admin-product-tile-count" required type="number" min="1" step="1" value={productDraft.tilesPerPack} onChange={event=>setProductDraft({...productDraft,tilesPerPack:event.target.value})}/></label></div>:productDraft.packagingKind&&<label htmlFor="admin-product-pack-size">{productDraft.packagingKind==='paint'?'Объём ведра, л':'Масса мешка, кг'}<input id="admin-product-pack-size" required type="number" min="0" step="any" value={productDraft.packSize} onChange={event=>setProductDraft({...productDraft,packSize:event.target.value})}/></label>}<p className="form-info">Фасовка задаётся при создании товара и используется для расчёта потребности. Характеристики ниже — только описание.</p></>}<label>Адрес товара<input required maxLength={100} pattern="[a-z0-9]+(-[a-z0-9]+)*" value={productDraft.slug} onChange={event=>setProductDraft({...productDraft,slug:event.target.value})} placeholder="cement-m500"/></label><label>Описание<textarea maxLength={2000} rows={3} value={productDraft.description} onChange={event=>setProductDraft({...productDraft,description:event.target.value})}/></label><label>Изображение (необязательно)<input value={productDraft.imageUrl} onChange={event=>setProductDraft({...productDraft,imageUrl:event.target.value})} placeholder="https://... или /images/..."/></label><label>Характеристики, JSON<textarea rows={4} value={productDraft.specs} onChange={event=>setProductDraft({...productDraft,specs:event.target.value})} spellCheck={false}/></label><p className="form-info">Пример: { '{"марка":"М500","вес":50}' }. Если характеристик нет, оставьте пустой объект {}.</p>{error&&<p className="form-error" role="alert">{error}</p>}<button className="btn btn-dark" disabled={busy} type="submit">{busy?'Сохраняем…':'Сохранить товар'}</button></form></div></div>}
   </div>;
 }

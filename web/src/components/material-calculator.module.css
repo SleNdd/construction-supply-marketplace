@@ -1,0 +1,25 @@
+.intro { margin: 0 0 22px; color: var(--muted); max-width: 65ch; }
+.tabs { display: flex; gap: 6px; padding: 5px; background: var(--surface-2); border-radius: 12px; margin-bottom: 22px; }
+.tabs button { flex: 1; min-height: 44px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; font-weight: 650; }
+.tabs button[aria-pressed=true] { background: var(--surface); color: var(--ink); box-shadow: 0 2px 7px rgb(0 0 0 / .06); }
+.form { display: grid; gap: 18px; }
+.form label, .field label { display: grid; gap: 8px; font-size: 13px; font-weight: 600; min-width: 0; }
+.form input, .form select, .field input, .field select { min-height: 44px; width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.field { display: grid; gap: 8px; min-width: 0; }
+.input { display: flex; align-items: center; gap: 9px; }
+.input small { white-space: nowrap; color: var(--muted); font-weight: 400; }
+.packaging { display: flex; gap: 12px; padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+.packaging svg { flex-shrink: 0; color: var(--accent); }
+.packaging b, .packaging small { display: block; }
+.packaging small { margin-top: 5px; color: var(--muted); line-height: 1.6; }
+.help { margin: 0; font-size: 12px; line-height: 1.65; color: var(--muted); }
+.result { margin-top: 22px; border: 1px solid var(--line); border-radius: 16px; padding: 22px; background: var(--surface-2); animation: reveal .2s ease-out; }
+.total { font-size: clamp(25px, 4vw, 34px); font-weight: 700; letter-spacing: -.035em; margin: 9px 0; }
+.coverage { color: var(--muted); margin-bottom: 18px; }
+.formula { font-size: 12px; line-height: 1.65; border-top: 1px solid var(--line); padding-top: 14px; overflow-wrap: anywhere; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
+.success { color: var(--ink); display: flex; align-items: center; gap: 9px; margin: 0; }
+@keyframes reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 560px) { .fields { grid-template-columns: 1fr; } .tabs { gap: 2px; } .tabs button { font-size: 12px; padding: 5px; } .result { padding: 16px; } .actions button { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .result { animation: none; } }

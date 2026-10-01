@@ -36,12 +36,12 @@ export class CatalogController {
       AND ($4::int IS NULL OR available.price>=$4::int) AND ($5::int IS NULL OR available.price<=$5::int)`;
     const params = [q,category,inStock,minPrice,maxPrice];
     const total = await this.db.one<{count:string}>(`SELECT count(*)::text AS count ${source}`,params);
-    const items = await this.db.rows(`SELECT p.id,p.slug,p.name,p.category_id AS "categoryId",c.name AS category,p.unit,p.image_url AS "imageUrl",p.description,p.specs,available.price AS "priceFromKopecks" ${source} ORDER BY ${sortSql[sort]} LIMIT $6 OFFSET $7`,[...params,limit,(page-1)*limit]);
+    const items = await this.db.rows(`SELECT p.id,p.slug,p.name,p.category_id AS "categoryId",c.name AS category,p.unit,p.image_url AS "imageUrl",p.description,p.specs,p.packaging,available.price AS "priceFromKopecks" ${source} ORDER BY ${sortSql[sort]} LIMIT $6 OFFSET $7`,[...params,limit,(page-1)*limit]);
     return {items,page,total:Number(total?.count||0)};
   }
 
   @Get('products/:id') async product(@Param('id') id: string) {
-    const product = await this.db.one('SELECT p.id,p.slug,p.name,p.category_id AS "categoryId",c.name AS category,p.unit,p.image_url AS "imageUrl",p.description,p.specs FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id::text=$1 OR p.slug=$1',[id]);
+    const product = await this.db.one('SELECT p.id,p.slug,p.name,p.category_id AS "categoryId",c.name AS category,p.unit,p.image_url AS "imageUrl",p.description,p.specs,p.packaging FROM products p JOIN categories c ON c.id=p.category_id WHERE p.id::text=$1 OR p.slug=$1',[id]);
     if (!product) throw new ApiError(404,'not_found','Товар не найден');
     const offers = await this.db.rows<{deliveryDays:number}>('SELECT o.id,o.supplier_id AS "supplierId",s.name AS "supplierName",o.warehouse_id AS "warehouseId",w.name AS "warehouseName",w.address AS "warehouseAddress",o.price_kopecks AS "priceKopecks",o.stock,o.delivery_days AS "deliveryDays",o.delivery_cost_kopecks AS "deliveryCostKopecks" FROM offers o JOIN suppliers s ON s.id=o.supplier_id JOIN warehouses w ON w.id=o.warehouse_id WHERE o.product_id=$1 AND o.active ORDER BY o.price_kopecks',[product.id]);
     const now = new Date();

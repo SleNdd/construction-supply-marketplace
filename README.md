@@ -4,7 +4,7 @@
 
 ![Главная страница «ОбъектМаркета»](docs/screenshots/home.png)
 
-[Каталог](docs/screenshots/catalog.png) · [Закупка для объекта](docs/screenshots/project-detail.png) · [Сравнение с доставкой](docs/screenshots/comparison.jpg)
+[Каталог](docs/screenshots/catalog.png) · [Закупка для объекта](docs/screenshots/project-detail.png) · [Сравнение с доставкой](docs/screenshots/comparison.jpg) · [Калькулятор материалов](docs/screenshots/material-calculator-desktop.png)
 
 Демонстрационные товары, организации и заказы вымышлены. Подтверждение оплаты меняет учебный статус заказа; деньги не списываются. Статусы рейса водитель отмечает вручную. Карта показывает статичную схему между фиксированными демонстрационными точками; движения автомобиля и GPS нет.
 
@@ -49,6 +49,7 @@ docker compose up --build -d
 ## Документация
 
 - [Руководство пользователя](docs/USER_GUIDE.md)
+- [Расчёт материалов, фасовка и округление](docs/MATERIAL_CALCULATIONS.md)
 - [Архитектура](docs/ARCHITECTURE.md), [модель данных](docs/DATA_MODEL.md) и [контракт API](docs/API_CONTRACT.md)
 - [Запуск и развёртывание](docs/DEPLOY.md)
 - [Постановка задачи и аналоги](docs/RESEARCH.md)

@@ -43,6 +43,7 @@ jobs:
       - run: npm run test
       - run: npm run build
       - run: npm run test:integration
+      - run: npm run test:migrations
       - run: npm run seed
       - name: Сквозная проверка API
         run: |

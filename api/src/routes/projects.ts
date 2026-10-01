@@ -1,8 +1,10 @@
-import { Controller, Get, Post, Patch, Delete, HttpCode, Param, Body, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, HttpCode, Param, Body, Req, Headers } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type { Request } from 'express';
 import { Db } from '../db';
 import { ApiError, dateField, positiveInt, requireRole, textField, uuidField } from '../security';
 import { calculateTiles, calculatePaint, calculateDryMix } from '../calculators';
+import { calculateMaterial, MaterialProduct, normalizeMaterialRequest } from '../packaging';
 
 @Controller('api/v1')
 export class ProjectsController {
@@ -70,6 +72,39 @@ export class ProjectsController {
     uuidField(id,'id'); uuidField(itemId,'itemId');
     const item=await this.db.one('DELETE FROM project_items i WHERE i.id=$1 AND i.project_id=$2 AND EXISTS (SELECT 1 FROM projects p WHERE p.id=i.project_id AND p.buyer_id=$3) RETURNING i.id',[itemId,id,user.id]);
     if (!item) throw new ApiError(404,'not_found','Позиция не найдена');
+  }
+
+  @Post('projects/:id/items/from-calculation') async addFromCalculation(@Req() request:Request,@Param('id') id:string,@Body() body:unknown,@Headers('idempotency-key') key?:string) {
+    const user=requireRole(await this.db.user(request.cookies?.om_session),'buyer');
+    id=uuidField(id,'id').toLowerCase();
+    if (!key || key.length>100 || !/^[A-Za-z0-9._:-]+$/.test(key)) throw new ApiError(400,'idempotency_key_required','Укажите Idempotency-Key (1–100 букв, цифр или ._:-)');
+    const normalized=normalizeMaterialRequest(body,true);
+    const hash=createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
+    return this.db.transaction(async client=>{
+      // Блокировка ключа сериализует проверку результата и конкурентные повторы.
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`project-calculation:${id}:${key}`]);
+      if (!(await client.query('SELECT id FROM projects WHERE id=$1 AND buyer_id=$2 FOR KEY SHARE',[id,user.id])).rowCount) throw new ApiError(404,'not_found','Объект не найден');
+      const prior=(await client.query<{request_hash:string;item_id:string;response:unknown}>('SELECT request_hash,item_id,response FROM project_calculation_keys WHERE project_id=$1 AND key=$2',[id,key])).rows[0];
+      if (prior) {
+        if (prior.request_hash!==hash) throw new ApiError(409,'idempotency_conflict','Ключ уже использован для другого расчёта');
+        if (!(await client.query('SELECT id FROM project_items WHERE id=$1 AND project_id=$2 FOR KEY SHARE',[prior.item_id,id])).rowCount) throw new ApiError(409,'calculation_item_deleted','Позиция этого расчёта удалена; для нового добавления нужен новый ключ');
+        return prior.response;
+      }
+      const product=(await client.query<MaterialProduct>('SELECT id,name,unit,packaging FROM products WHERE id=$1',[normalized.productId])).rows[0];
+      if (!product) throw new ApiError(404,'not_found','Товар не найден');
+      const calculation=calculateMaterial(product,normalized);
+      const inserted=(await client.query('INSERT INTO project_items(project_id,product_id,quantity,stage_date) VALUES($1,$2,$3,$4) RETURNING id,product_id AS "productId",quantity,to_char(stage_date,\'YYYY-MM-DD\') AS "stageDate"',[id,product.id,calculation.packages,normalized.stageDate])).rows[0];
+      const response={item:{...inserted,productName:product.name,unit:product.unit},calculation};
+      await client.query('INSERT INTO project_calculation_keys(project_id,key,request_hash,item_id,response) VALUES($1,$2,$3,$4,$5)',[id,key,hash,inserted.id,JSON.stringify(response)]);
+      return response;
+    });
+  }
+
+  @Post('calculators/material') async material(@Body() body:unknown) {
+    const normalized=normalizeMaterialRequest(body);
+    const product=await this.db.one<MaterialProduct>('SELECT id,name,unit,packaging FROM products WHERE id=$1',[normalized.productId]);
+    if (!product) throw new ApiError(404,'not_found','Товар не найден');
+    return calculateMaterial(product,normalized);
   }
 
   @Post('calculators/tiles') tiles(@Body() body: Record<string,unknown>) { return calculateTiles(body); }

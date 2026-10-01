@@ -1,7 +1,6 @@
 import { Pool } from 'pg';
 import { createHash } from 'node:crypto';
-import { hashPassword } from '../src/security';
-import type { Packaging } from '../src/packaging';
+import { hashPassword } from '../../src/security';
 
 const id = (key: string) => {
   const h = createHash('md5').update(`objectmarket-demo-${key}`).digest('hex');
@@ -14,8 +13,6 @@ async function main() {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // Существующий каталог не получает дополнительный коробочный запас при повторном seed.
-    const freshCatalog=!(await client.query('SELECT 1 FROM products LIMIT 1')).rowCount;
     const users = [
       ['buyer','Покупатель Демо','buyer@example.test'],
       ['supplier1','Поставщик Волга','supplier@example.test'],
@@ -44,25 +41,19 @@ async function main() {
       ['adhesive','dry','Клей плиточный 25 кг','мешок',{'Вес':'25 кг','Класс':'C1'},'Клей для керамической плитки.'],
       ['paint-white','paint','Краска интерьерная белая 10 л','ведро',{'Объём':'10 л','Расход':'0,11 л/м²'},'Водно-дисперсионная краска для стен и потолков.'],
       ['paint-facade','paint','Краска фасадная 9 л','ведро',{'Объём':'9 л','Расход':'0,15 л/м²'},'Фасадная краска для минеральных оснований.'],
-      ['tile-beige','tile','Керамогранит Песчаник 60×60 — м²','м²',{'Формат':'60×60 см','Площадь коробки':'1,44 м²'},'Матовый керамогранит песочного оттенка. Продажа целыми м²; отдельная коробочная позиция имеет свою единицу и запас.'],
-      ['tile-grey','tile','Плитка настенная Графит 30×60 — м²','м²',{'Формат':'30×60 см','Площадь коробки':'1,26 м²'},'Настенная плитка серого оттенка. Продажа целыми м²; отдельная коробочная позиция имеет свою единицу и запас.'],
+      ['tile-beige','tile','Керамогранит Песчаник 60×60','м²',{'Формат':'60×60 см','Площадь коробки':'1,44 м²'},'Матовый керамогранит песочного оттенка.'],
+      ['tile-grey','tile','Плитка настенная Графит 30×60','м²',{'Формат':'30×60 см','Площадь коробки':'1,26 м²'},'Настенная плитка серого оттенка.'],
       ['board','wood','Доска обрезная 25×150×6000','шт.',{'Порода':'Сосна','Влажность':'18–22%'},'Доска для общестроительных работ.'],
       ['plywood','wood','Фанера ФК 12 мм 1525×1525','лист',{'Толщина':'12 мм','Сорт':'2/4'},'Фанера для внутренних работ.'],
       ['wool','insulation','Минеральная вата 50 мм 6 м²','упаковка',{'Толщина':'50 мм','Площадь':'6 м²'},'Теплоизоляция для перегородок.'],
       ['membrane','insulation','Пароизоляционная мембрана 70 м²','рулон',{'Площадь':'70 м²'},'Пароизоляция для каркасных конструкций.'],
-      ['tile-beige-box','tile','Керамогранит Песчаник 60×60 — коробка','коробка',{'Формат':'60×60 см'},'Вымышленная демопозиция: 4 плитки, 1,44 м² в коробке.'],
-      ['tile-grey-box','tile','Плитка настенная Графит 30×60 — коробка','коробка',{'Формат':'30×60 см'},'Вымышленная демопозиция: 7 плиток, 1,26 м² в коробке.'],
     ] as const;
-    const packaging:Record<string,Packaging>={cement:{kind:'dry-mix',packSizeKg:50},plaster:{kind:'dry-mix',packSizeKg:30},adhesive:{kind:'dry-mix',packSizeKg:25},'paint-white':{kind:'paint',packSizeL:10},'paint-facade':{kind:'paint',packSizeL:9},'tile-beige-box':{kind:'tiles',tileAreaM2:0.36,tilesPerPack:4},'tile-grey-box':{kind:'tiles',tileAreaM2:0.18,tilesPerPack:7}};
-    for (const [key,category,name,unit,specs,description] of products) await client.query('INSERT INTO products(id,category_id,slug,name,unit,description,specs,packaging) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING',[id(key),id(category),key,name,unit,description,JSON.stringify(specs),packaging[key]?JSON.stringify(packaging[key]):null]);
+    for (const [key,category,name,unit,specs,description] of products) await client.query('INSERT INTO products(id,category_id,slug,name,unit,description,specs) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING',[id(key),id(category),key,name,unit,description,JSON.stringify(specs)]);
     for (let index=0; index<products.length; index++) {
       for (let supplierIndex=0; supplierIndex<2; supplierIndex++) {
         const supplier = supplierIndex ? 'kaspiy' : 'volga';
         const warehouse = supplierIndex ? 'kaspiy-main' : 'volga-main';
-        const key=products[index][0];
-        const price=key==='tile-beige-box'?(supplierIndex?191664:185760):key==='tile-grey-box'?(supplierIndex?188874:183708):42000+index*17300+supplierIndex*4100;
-        const stock=key.endsWith('-box') && !freshCatalog?0:40+index*3+supplierIndex*12;
-        await client.query('INSERT INTO offers(id,product_id,supplier_id,warehouse_id,price_kopecks,stock,delivery_days,delivery_cost_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING',[id(`offer-${key}-${supplier}`),id(key),id(supplier),id(warehouse),price,stock,1+supplierIndex,65000+supplierIndex*20000]);
+        await client.query('INSERT INTO offers(id,product_id,supplier_id,warehouse_id,price_kopecks,stock,delivery_days,delivery_cost_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING',[id(`offer-${products[index][0]}-${supplier}`),id(products[index][0]),id(supplier),id(warehouse),42000+index*17300+supplierIndex*4100,40+index*3+supplierIndex*12,1+supplierIndex,65000+supplierIndex*20000]);
       }
     }
     const stageInDays=(days:number)=>{const date=new Date();date.setUTCDate(date.getUTCDate()+days);return date.toISOString().slice(0,10);};

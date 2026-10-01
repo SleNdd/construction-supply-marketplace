@@ -1,7 +1,8 @@
 export type User = { id: string; name: string; email: string; role: 'buyer' | 'supplier' | 'dispatcher' | 'driver' | 'admin' };
 export type Category = { id: string; name: string; slug: string };
 export type Offer = { id: string; supplierId: string; supplierName: string; warehouseId: string; warehouseName?: string; warehouseAddress?: string; priceKopecks: number; stock: number; deliveryDays: number; earliestDeliveryDate: string; deliveryCostKopecks: number };
-export type Product = { id: string; slug: string; name: string; category: string | Category; categoryId?: string; unit: string; imageUrl?: string; priceFromKopecks: number | null; description?: string; specs?: Record<string, string | number>; offers?: Offer[] };
+export type ProductPackaging = { kind: 'tiles'; tileAreaM2: number; tilesPerPack: number } | { kind: 'paint'; packSizeL: number } | { kind: 'dry-mix'; packSizeKg: number };
+export type Product = { id: string; slug: string; name: string; category: string | Category; categoryId?: string; unit: string; packaging?: ProductPackaging | null; imageUrl?: string; priceFromKopecks: number | null; description?: string; specs?: Record<string, string | number>; offers?: Offer[] };
 export type CartItem = { offerId: string; quantity: number; productId: string; productName: string; supplierName: string; priceKopecks: number; unit: string };
 export type Project = { id: string; name: string; address: string; itemCount?: number; stages?: unknown[]; items?: Array<{ id?: string; productId: string; productName?: string; unit?: string; quantity: number; product?: Product; stageDate?: string | null }> };
 
@@ -36,6 +37,8 @@ export const categoryName = (value: string | Category) => typeof value === 'stri
 export function quantityUnit(quantity: number, unit: string): string {
   const forms: Record<string, [string, string, string]> = {
     мешок: ['мешок', 'мешка', 'мешков'],
+    коробка: ['коробка', 'коробки', 'коробок'],
+    плитка: ['плитка', 'плитки', 'плиток'],
     ведро: ['ведро', 'ведра', 'вёдер'],
     упаковка: ['упаковка', 'упаковки', 'упаковок'],
     лист: ['лист', 'листа', 'листов'],
