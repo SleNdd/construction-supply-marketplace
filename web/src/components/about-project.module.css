@@ -1,0 +1,11 @@
+.page { max-width: 1120px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.card { min-width: 0; padding: 28px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.card h2 { font-size: clamp(23px, 3vw, 30px); }
+.card p, .card li { line-height: 1.7; }
+.card ul { padding-left: 22px; }
+.card li + li { margin-top: 10px; }
+.wide { grid-column: 1 / -1; }
+.action { min-height: 44px; white-space: normal; }
+.action:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } .card { padding: 22px; } }

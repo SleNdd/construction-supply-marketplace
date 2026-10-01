@@ -42,7 +42,7 @@ components:
           maxItems: 50
           items: {$ref: '#/components/schemas/CartItem'}
         address: {type: string, description: 'Учебный адрес: «Астрахань, улица, дом» или «г. Астрахань, улица, дом»'}
-        requestedDate: {type: string, format: date, description: 'Календарная дата доставки; прошлые даты и минимальный срок проверяются по часовому поясу Астрахани'}
+        requestedDate: {type: string, format: date, nullable: true, description: 'Календарная дата доставки ГГГГ-ММ-ДД, год от 0001 до 9999; прошлые даты и минимальный срок проверяются по часовому поясу Астрахани'}
         projectId: {type: string, format: uuid}
     Product:
       type: object
@@ -127,7 +127,7 @@ components:
         productId: {type: string, format: uuid}
         kind: {type: string, enum: [tiles, paint, dry-mix]}
         inputs: {$ref: '#/components/schemas/MaterialInputs'}
-        stageDate: {type: string, format: date, nullable: true}
+        stageDate: {type: string, format: date, nullable: true, description: 'Календарная дата ГГГГ-ММ-ДД; год от 0001 до 9999'}
     MaterialCalculation:
       allOf:
         - {$ref: '#/components/schemas/Calculation'}
@@ -431,8 +431,8 @@ paths:
               required: [productId, quantity]
               properties:
                 productId: {type: string, format: uuid}
-                quantity: {type: integer, minimum: 1}
-                stageDate: {type: string, format: date}
+                quantity: {type: integer, minimum: 1, maximum: 2147483647}
+                stageDate: {type: string, format: date, nullable: true, description: 'Календарная дата ГГГГ-ММ-ДД; год от 0001 до 9999'}
       responses: {'201': {description: Позиция добавлена}}
   /projects/{id}/items/{itemId}:
     parameters:
@@ -450,8 +450,8 @@ paths:
               minProperties: 1
               additionalProperties: false
               properties:
-                quantity: {type: integer, minimum: 1}
-                stageDate: {type: string, format: date, nullable: true}
+                quantity: {type: integer, minimum: 1, maximum: 2147483647}
+                stageDate: {type: string, format: date, nullable: true, description: 'Календарная дата ГГГГ-ММ-ДД; год от 0001 до 9999'}
       responses:
         '200': {description: Изменённая позиция}
         '400': {$ref: '#/components/responses/Error'}
@@ -612,7 +612,7 @@ paths:
               required: [driverId]
               properties:
                 driverId: {type: string, format: uuid}
-                scheduledDate: {type: string, format: date}
+                scheduledDate: {type: string, format: date, nullable: true, description: 'Календарная дата ГГГГ-ММ-ДД; год от 0001 до 9999'}
       responses: {'200': {description: Назначенная поставка}}
   /driver/deliveries:
     get:

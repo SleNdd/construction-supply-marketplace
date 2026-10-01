@@ -200,6 +200,13 @@ async function main() {
     const offerId=(await request(`/products/${product.id}`)).data.offers[0].id;
     const stock=Number((await pool.query<{stock:number}>('SELECT stock FROM offers WHERE id=$1',[offerId])).rows[0].stock);
     const purchase={items:[{offerId,quantity:2}],address:'Астрахань, ул. Савушкина, 6'};
+    const ordersBeforeInvalidDate=(await pool.query('SELECT count(*)::int AS n FROM orders')).rows[0].n;
+    for (const path of ['/quotes','/orders']) {
+      const invalid=await request(path,'POST',{...purchase,requestedDate:'0000-01-01'},a,randomUUID());
+      assert.equal(invalid.status,400,JSON.stringify(invalid.data));
+      assert.equal(invalid.data.code,'invalid_input');
+    }
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM orders')).rows[0].n,ordersBeforeInvalidDate,'год 0000 не создаёт заказ');
     const quote=await request('/quotes','POST',purchase);
     assert.equal(quote.status,201,JSON.stringify(quote.data));
     assert.equal((await request('/orders','POST',purchase,a)).status,400,'ключ обязателен');
@@ -270,6 +277,36 @@ async function main() {
     assert.equal(projectAfter.status,200);
     assert.deepEqual(projectAfter.data,projectBefore.data,'чужой PATCH сохраняет имя, адрес и позиции объекта владельца');
     const itemPath=`/projects/${project.data.id}/items/${projectItem.data.id}`;
+    const itemsPath=`/projects/${project.data.id}/items`;
+    const savedItems=async()=> (await pool.query('SELECT id,quantity,stage_date::text FROM project_items WHERE project_id=$1 ORDER BY id',[project.data.id])).rows;
+    const beforeInvalid=await savedItems();
+    for (const quantity of [2147483648,Number.MAX_SAFE_INTEGER]) {
+      for (const [path,method,body] of [[itemsPath,'POST',{productId,quantity}],[itemPath,'PATCH',{quantity,stageDate:'2028-02-29'}]] as const) {
+        const invalid=await request(path,method,body,a);
+        assert.equal(invalid.status,400,JSON.stringify(invalid.data));
+        assert.equal(invalid.data.code,'invalid_input');
+        assert.deepEqual(await savedItems(),beforeInvalid,'переполнение не добавляет и не изменяет потребность');
+      }
+    }
+    for (const stageDate of ['0000-01-01','0000-02-29','1900-02-29','2026-02-30']) {
+      for (const [path,method,body] of [[itemsPath,'POST',{productId,quantity:1,stageDate}],[itemPath,'PATCH',{quantity:3,stageDate}]] as const) {
+        const invalid=await request(path,method,body,a);
+        assert.equal(invalid.status,400,JSON.stringify(invalid.data));
+        assert.equal(invalid.data.code,'invalid_input');
+        assert.deepEqual(await savedItems(),beforeInvalid,'ошибочная дата не меняет потребность');
+      }
+    }
+    const boundary=await request(itemsPath,'POST',{productId,quantity:2147483647,stageDate:'2028-02-29'},a);
+    assert.equal(boundary.status,201,JSON.stringify(boundary.data));
+    assert.equal(boundary.data.quantity,2147483647);
+    assert.equal(boundary.data.stageDate,'2028-02-29');
+    assert.equal((await request(`${itemsPath}/${boundary.data.id}`,'DELETE',undefined,a)).status,204);
+    const patchedBoundary=await request(itemPath,'PATCH',{quantity:2147483647,stageDate:'2028-02-29'},a);
+    assert.equal(patchedBoundary.status,200,JSON.stringify(patchedBoundary.data));
+    assert.equal(patchedBoundary.data.quantity,2147483647);
+    assert.equal(patchedBoundary.data.stageDate,'2028-02-29');
+    assert.equal((await savedItems())[0].quantity,2147483647,'граница сохраняется в PostgreSQL');
+    assert.equal((await request(itemPath,'PATCH',{quantity:2,stageDate:'2026-10-01'},a)).status,200);
     assert.equal((await request('/projects','GET',undefined,a)).data.find((entry:{id:string})=>entry.id===project.data.id).itemCount,1);
     assert.equal((await request(itemPath,'PATCH',{quantity:3},b)).status,404,'чужую позицию нельзя изменить');
     assert.equal((await request(itemPath,'PATCH',{productId},b)).status,404,'чужая позиция скрыта и при ошибочном теле');
@@ -324,6 +361,10 @@ async function main() {
       assertCalendarDate(pending.scheduledDate,null,'рейс до назначения');
     }
     const scheduledDates=['2030-02-03',null] as const;
+    const invalidSchedule=await request(`/dispatch/deliveries/${multi.data.deliveries[0].id}`,'PATCH',{driverId,scheduledDate:'0000-01-01'},dispatcher);
+    assert.equal(invalidSchedule.status,400,JSON.stringify(invalidSchedule.data));
+    assert.equal(invalidSchedule.data.code,'invalid_input');
+    assert.deepEqual((await request('/dispatch/deliveries','GET',undefined,dispatcher)).data,dispatchBefore.data,'год 0000 не назначает рейс');
     for (const [index,delivery] of multi.data.deliveries.entries()) {
       const scheduledDate=scheduledDates[index];
       const assigned=await request(`/dispatch/deliveries/${delivery.id}`,'PATCH',{driverId,scheduledDate},dispatcher);

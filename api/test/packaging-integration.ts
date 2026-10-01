@@ -60,7 +60,7 @@ export async function packagingIntegration(request:Requester,pool:Pool,buyer:str
     assert.equal((await request(path,'POST',{...body,inputs:{...body.inputs,[field]:4}},buyer,randomUUID())).status,400);
   }
   for (const inputs of [null,[],{areaM2:null},{areaM2:24,wastePercent:null}]) assert.equal((await request(path,'POST',{...body,inputs},buyer,randomUUID())).status,400);
-  for (const invalidBody of [{...body,packages:1},{...body,stageDate:'2026-02-30'},{...body,kind:'paint',inputs:{areaM2:24,rateLPerM2:0.1}}]) assert.equal((await request(path,'POST',invalidBody,buyer,randomUUID())).status,400);
+  for (const invalidBody of [{...body,packages:1},{...body,stageDate:'2026-02-30'},{...body,stageDate:'0000-01-01'},{...body,kind:'paint',inputs:{areaM2:24,rateLPerM2:0.1}}]) assert.equal((await request(path,'POST',invalidBody,buyer,randomUUID())).status,400);
   const old=(await request('/products/tile-beige')).data;
   assert.equal(old.unit,'м²'); assert.equal(old.packaging,null);
   assert.equal((await request('/calculators/material','POST',{...body,productId:old.id})).data.code,'packaging_unavailable');

@@ -56,7 +56,7 @@ test('Настоящий UI покупателя: уникальный объе�
     orderId = (await response.json()).id;
     expect(response.request().postDataJSON().projectId).toBe(projectId);
     await expect(page).toHaveURL(`/orders/${orderId}`);
-    await expect(page.getByText('Ожидает демооплату', { exact: true })).toBeVisible();
+    await expect(page.getByText('Ожидает оплаты', { exact: true })).toBeVisible();
     const reserved = await (await page.request.get(`/api/v1/products/${product.id}`)).json();
     expect(reserved.offers.find((item: { id: string }) => item.id === offer.id).stock).toBe(offer.stock - 1);
     await page.getByRole('button', { name: 'Отменить заказ', exact: true }).click();

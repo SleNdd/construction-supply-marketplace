@@ -1,6 +1,7 @@
 """Собирает пояснительную записку из content.md."""
 
 from pathlib import Path
+import argparse
 import re
 
 from docx import Document
@@ -136,7 +137,7 @@ def add_table(document, rows, index):
     document.add_paragraph().paragraph_format.space_after = Pt(0)
 
 
-def create():
+def create(output=OUTPUT):
     document = Document()
     section = document.sections[0]
     section.page_width = Cm(21)
@@ -234,12 +235,33 @@ def create():
 
     lines = (ROOT / "content.md").read_text(encoding="utf-8").splitlines()
     table_index = 0
+    figure_index = 0
     i = 0
     in_bibliography = False
     while i < len(lines):
         line = lines[i].strip()
         i += 1
         if not line:
+            continue
+        figure = re.fullmatch(r"!\[([^\]]+)\]\(([^)]+)\)", line)
+        if figure:
+            caption_text, relative_path = figure.groups()
+            image_path = (ROOT / relative_path).resolve()
+            if not image_path.is_file():
+                raise FileNotFoundError(image_path)
+            figure_index += 1
+            paragraph = document.add_paragraph()
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            paragraph.paragraph_format.first_line_indent = Cm(0)
+            paragraph.paragraph_format.keep_with_next = True
+            width = Cm(8) if "mobile" in image_path.stem else Cm(16.5)
+            shape = paragraph.add_run().add_picture(str(image_path), width=width)
+            shape._inline.docPr.set("descr", caption_text)
+            caption = document.add_paragraph(style="Caption")
+            caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            caption.paragraph_format.first_line_indent = Cm(0)
+            caption.paragraph_format.keep_with_next = False
+            caption.add_run(f"Рисунок {figure_index} — {caption_text}")
             continue
         if line.startswith("|"):
             rows = [line]
@@ -253,6 +275,7 @@ def create():
             title = line[2:]
             if title == "СОДЕРЖАНИЕ":
                 heading = document.add_paragraph()
+                heading.paragraph_format.page_break_before = True
                 heading.paragraph_format.first_line_indent = Cm(0)
                 heading.paragraph_format.space_after = Pt(8)
                 heading.add_run(title).bold = True
@@ -277,7 +300,7 @@ def create():
         if in_bibliography and re.match(r"^\d+\. ", line):
             p.paragraph_format.first_line_indent = Cm(0)
             p.paragraph_format.left_indent = Cm(0.7)
-            p.paragraph_format.space_after = Pt(4)
+            p.paragraph_format.space_after = Pt(0)
         add_inline(p, line)
 
     settings = document.settings.element
@@ -288,9 +311,11 @@ def create():
     document.core_properties.author = "Бальдюсов Кирилл Андреевич"
     document.core_properties.last_modified_by = "Бальдюсов Кирилл Андреевич"
     document.core_properties.comments = ""
-    document.save(OUTPUT)
-    print(OUTPUT)
+    document.save(output)
+    print(output)
 
 
 if __name__ == "__main__":
-    create()
+    parser = argparse.ArgumentParser(description="Сборка пояснительной записки")
+    parser.add_argument("--output", type=Path, default=OUTPUT)
+    create(parser.parse_args().output)

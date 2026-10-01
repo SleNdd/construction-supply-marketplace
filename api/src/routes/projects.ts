@@ -6,6 +6,13 @@ import { ApiError, dateField, positiveInt, requireRole, textField, uuidField } f
 import { calculateTiles, calculatePaint, calculateDryMix } from '../calculators';
 import { calculateMaterial, MaterialProduct, normalizeMaterialRequest } from '../packaging';
 
+function projectQuantity(value: unknown): number {
+  // Предел поля project_items.quantity в PostgreSQL.
+  const quantity = positiveInt(value,'quantity');
+  if (quantity > 2147483647) throw new ApiError(400,'invalid_input','quantity: допускается не больше 2147483647');
+  return quantity;
+}
+
 @Controller('api/v1')
 export class ProjectsController {
   constructor(private readonly db: Db) {}
@@ -49,7 +56,7 @@ export class ProjectsController {
     await this.db.mustOwnProject(id,user.id);
     const productId = uuidField(body.productId,'productId');
     if (!await this.db.one('SELECT id FROM products WHERE id=$1',[productId])) throw new ApiError(404,'not_found','Товар не найден');
-    return this.db.one(`INSERT INTO project_items(project_id,product_id,quantity,stage_date) VALUES($1,$2,$3,$4) RETURNING id,product_id AS "productId",quantity,to_char(stage_date,'YYYY-MM-DD') AS "stageDate"`,[id,productId,positiveInt(body.quantity,'quantity'),dateField(body.stageDate,'stageDate')]);
+    return this.db.one(`INSERT INTO project_items(project_id,product_id,quantity,stage_date) VALUES($1,$2,$3,$4) RETURNING id,product_id AS "productId",quantity,to_char(stage_date,'YYYY-MM-DD') AS "stageDate"`,[id,productId,projectQuantity(body.quantity),dateField(body.stageDate,'stageDate')]);
   }
 
   @Patch('projects/:id/items/:itemId') async editItem(@Req() request: Request,@Param('id') id: string,@Param('itemId') itemId: string,@Body() body: Record<string,unknown>) {
@@ -58,7 +65,7 @@ export class ProjectsController {
     if (!await this.db.one('SELECT i.id FROM project_items i JOIN projects p ON p.id=i.project_id WHERE i.id=$1 AND i.project_id=$2 AND p.buyer_id=$3',[itemId,id,user.id])) throw new ApiError(404,'not_found','Позиция не найдена');
     if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key)=>!['quantity','stageDate'].includes(key))) throw new ApiError(400,'invalid_input','Разрешено изменить только количество и дату этапа');
     const values: unknown[]=[]; const sets: string[]=[];
-    if (body.quantity !== undefined) { values.push(positiveInt(body.quantity,'quantity')); sets.push(`quantity=$${values.length}`); }
+    if (body.quantity !== undefined) { values.push(projectQuantity(body.quantity)); sets.push(`quantity=$${values.length}`); }
     if (body.stageDate !== undefined) { values.push(dateField(body.stageDate,'stageDate')); sets.push(`stage_date=$${values.length}`); }
     if (!sets.length) throw new ApiError(400,'invalid_input','Нет полей для изменения');
     values.push(itemId,id,user.id);

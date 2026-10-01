@@ -40,7 +40,7 @@ test('UI с фикстурами: новый адрес получает рас�
   await expect(page.getByText('Устаревший расчёт')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Старый адрес, дом 1' })).toHaveCount(0);
   await expect(page.getByText('Расчёт нового адреса')).toBeVisible();
-  await expect(page.getByText('Деморежим: подсказки из учебного списка адресов.')).toBeVisible();
+  await expect(page.getByText('Подсказки из учебного списка адресов.')).toBeVisible();
 });
 
 test('UI с фикстурами: новая дата сбрасывает расчёт, недоступный остаток запрещает заказ', async ({ page }) => {
@@ -81,7 +81,7 @@ test('UI с фикстурами: ошибку подсказок можно о�
   });
   await page.getByLabel('Адрес объекта или доставки').fill('Адрес вручную');
   await expect(page.getByRole('status')).toContainText('Подсказки временно недоступны. Адрес можно ввести вручную.');
-  await expect(page.getByText('Деморежим: подсказки из учебного списка адресов.')).toHaveCount(0);
+  await expect(page.getByText('Подсказки из учебного списка адресов.')).toHaveCount(0);
   await expect(page.getByRole('main').getByRole('alert')).toHaveText('Расчёт временно недоступен');
   const confirm = page.getByRole('button', { name: 'Подтвердить заказ' });
   await expect(confirm).toBeDisabled();

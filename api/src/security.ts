@@ -51,6 +51,6 @@ export function uuidField(value: unknown, name: string): string {
 
 export function dateField(value: unknown, name: string): string | null {
   if (value == null || value === '') return null;
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`)) || new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)!==value) throw new ApiError(400, 'invalid_input', `${name}: укажите дату ГГГГ-ММ-ДД`);
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000-') || Number.isNaN(Date.parse(`${value}T00:00:00Z`)) || new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)!==value) throw new ApiError(400, 'invalid_input', `${name}: укажите дату ГГГГ-ММ-ДД`);
   return value;
 }

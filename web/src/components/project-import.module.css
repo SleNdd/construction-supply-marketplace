@@ -1,0 +1,18 @@
+.panel { min-width: 0; }
+.help { color: var(--muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0; }
+.actions button { min-height: 44px; white-space: normal; }
+.file { display: grid; gap: 10px; font-weight: 600; font-size: 14px; }
+.file input { min-height: 44px; min-width: 0; max-width: 100%; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); padding: 8px; }
+.file input::file-selector-button { min-height: 44px; margin-right: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.summary { font-size: 14px; line-height: 1.7; }
+.preview { list-style: none; padding: 0; display: grid; gap: 12px; max-height: 540px; overflow-y: auto; }
+.row { padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); overflow-wrap: anywhere; }
+.row b, .row small, .line { display: block; }
+.row small, .line { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.row b { margin: 4px 0; }
+.row dl { display: flex; flex-wrap: wrap; gap: 12px 30px; margin: 12px 0; }
+.row dt { color: var(--muted); font-size: 12px; }
+.row dd { margin: 4px 0 0; font-size: 14px; }
+.row p { margin: 0; }
+@media (max-width: 560px) { .actions button { width: 100%; } .row { padding: 12px; } }

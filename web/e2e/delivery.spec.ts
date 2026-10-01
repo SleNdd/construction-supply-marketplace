@@ -55,9 +55,9 @@ test('Настоящая доставка: демооплата, назначе�
   expect(createdResponse.ok()).toBe(true);
   const orderId: string = (await createdResponse.json()).id;
   await expect(page).toHaveURL(`/orders/${orderId}`);
-  await expect(page.getByText('Ожидает демооплату', { exact: true })).toBeVisible();
+  await expect(page.getByText('Ожидает оплаты', { exact: true })).toBeVisible();
   const paymentResponsePromise = page.waitForResponse(response => new URL(response.url()).pathname === `/api/v1/orders/${orderId}/demo-payment` && response.request().method() === 'POST');
-  await page.getByRole('button', { name: 'Подтвердить демооплату', exact: true }).click();
+  await page.getByRole('button', { name: 'Подтвердить тестовую оплату', exact: true }).click();
   const paymentResponse = await paymentResponsePromise;
   expect(paymentResponse.ok()).toBe(true);
   const paidOrder = await paymentResponse.json();
@@ -68,7 +68,7 @@ test('Настоящая доставка: демооплата, назначе�
   expect(paidOrder.totalKopecks).toBe(expectedTotal);
   expect(paidOrder.deliveries).toHaveLength(1);
   const deliveryId: string = paidOrder.deliveries[0].id;
-  await expect(page.getByText('Оплачен (демо)', { exact: true })).toBeVisible();
+  await expect(page.getByText('Оплачен', { exact: true })).toBeVisible();
   await expect(page.locator('.order-detail-head').getByRole('heading')).toHaveText(expectedFormattedTotal);
 
   await switchRole(page, 'dispatcher');
@@ -122,7 +122,7 @@ test('Настоящая доставка: демооплата, назначе�
   await page.goto(`/orders/${orderId}`);
   await expect(page.locator('.order-detail-head').getByText('Доставлен', { exact: true })).toBeVisible();
   await expect(page.locator('.order-detail-head').getByRole('heading')).toHaveText(expectedFormattedTotal);
-  await expect(page.getByText('Демооплата подтверждена', { exact: true })).toBeVisible();
+  await expect(page.getByText('Тестовая оплата подтверждена', { exact: true })).toBeVisible();
   await expect(page.locator('.order-detail')).toContainText(address);
   const finalResponse = await page.request.get(`/api/v1/orders/${orderId}`);
   expect(finalResponse.ok()).toBe(true);
