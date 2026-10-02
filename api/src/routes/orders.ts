@@ -5,6 +5,7 @@ import { PoolClient } from 'pg';
 import { Db } from '../db';
 import { earliestDateInAstrakhan, todayInAstrakhan } from '../calendar-date';
 import { normalizeOrderMoney } from '../order-money';
+import { parseDestinationCoordinates, snapshotDeparturePoints, WarehousePointRow } from '../delivery-points';
 import { ApiError, dateField, positiveInt, requireRole, textField, uuidField } from '../security';
 
 type CartItem = { offerId: string; quantity: number };
@@ -63,10 +64,10 @@ export class OrdersController {
     });
   }
 
-  private async offers(ids: string[], client?: PoolClient): Promise<Offer[]> {
+  private async offers(ids: string[], client?: PoolClient): Promise<(Offer & WarehousePointRow)[]> {
     const db = client ?? this.db.pool;
     const lock = client ? ' FOR UPDATE OF o' : '';
-    return (await db.query<Offer>(`SELECT o.id,o.supplier_id,s.name AS supplier_name,p.name AS product_name,p.unit,o.price_kopecks,o.stock,o.delivery_days,o.delivery_cost_kopecks,o.active FROM offers o JOIN suppliers s ON s.id=o.supplier_id JOIN products p ON p.id=o.product_id WHERE o.id=ANY($1::uuid[]) ORDER BY o.id${lock}`,[ids])).rows;
+    return (await db.query<Offer & WarehousePointRow>(`SELECT o.id,o.supplier_id,s.name AS supplier_name,p.name AS product_name,p.unit,o.price_kopecks,o.stock,o.delivery_days,o.delivery_cost_kopecks,o.active,w.id AS warehouse_id,w.name AS warehouse_name,w.address AS warehouse_address,w.lon AS warehouse_lon,w.lat AS warehouse_lat FROM offers o JOIN suppliers s ON s.id=o.supplier_id JOIN products p ON p.id=o.product_id JOIN warehouses w ON w.id=o.warehouse_id WHERE o.id=ANY($1::uuid[]) ORDER BY o.id${lock}`,[ids])).rows;
   }
 
   @Post('quotes') async quote(@Body() body: Record<string,unknown>) {
@@ -89,6 +90,7 @@ export class OrdersController {
   @Post('orders') async create(@Req() request: Request,@Body() body: Record<string,unknown>,@Headers('idempotency-key') key?: string) {
     const user = requireRole(await this.db.user(request.cookies?.om_session),'buyer');
     if (!key || key.length>100 || !/^[A-Za-z0-9._:-]+$/.test(key)) throw new ApiError(400,'idempotency_key_required','Укажите Idempotency-Key (1–100 букв, цифр или ._:-)');
+    const destinationCoordinates = parseDestinationCoordinates(body.destinationCoordinates);
     await this.expireReservations();
     const items = parseItems(body.items);
     const address = textField(body.address,'address',300);
@@ -96,7 +98,9 @@ export class OrdersController {
     const requestedDate = dateField(body.requestedDate,'requestedDate');
     const projectId = body.projectId == null ? null : uuidField(body.projectId,'projectId');
     if (projectId) await this.db.mustOwnProject(projectId,user.id);
-    const requestHash = createHash('sha256').update(JSON.stringify({items,address,requestedDate,projectId})).digest('hex');
+    // Отсутствие точки и null сохраняют точный формат хеша заказов до миграции 006.
+    const hashBody = {items,address,requestedDate,projectId,...(destinationCoordinates ? {destinationCoordinates} : {})};
+    const requestHash = createHash('sha256').update(JSON.stringify(hashBody)).digest('hex');
     const orderId = await this.db.transaction(async (client)=>{
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`${user.id}:${key}`]);
       const prior = await client.query<{request_hash:string;order_id:string}>('SELECT request_hash,order_id FROM idempotency_keys WHERE buyer_id=$1 AND key=$2',[user.id,key]);
@@ -110,13 +114,13 @@ export class OrdersController {
       const totals = getTotals(items,offers);
       if (totals.unavailable.length) throw new ApiError(409,'stock_unavailable',`Позиции недоступны: ${totals.unavailable.map((row)=>row.offerId).join(', ')}`);
       if (requestedDate && totals.lines.some((line)=>requestedDate<earliestDateInAstrakhan(line.deliveryDays,now))) throw new ApiError(409,'delivery_date_unavailable','Запрошенная дата раньше доступного срока поставки');
-      const created = await client.query<{id:string}>("INSERT INTO orders(buyer_id,project_id,address,requested_date,items_total_kopecks,delivery_total_kopecks,reservation_expires_at) VALUES($1,$2,$3,$4,$5,$6,now()+interval '30 minutes') RETURNING id",[user.id,projectId,address,requestedDate,totals.itemsTotalKopecks,totals.deliveryTotalKopecks]);
+      const created = await client.query<{id:string}>("INSERT INTO orders(buyer_id,project_id,address,requested_date,items_total_kopecks,delivery_total_kopecks,reservation_expires_at,destination_lon,destination_lat) VALUES($1,$2,$3,$4,$5,$6,now()+interval '30 minutes',$7,$8) RETURNING id",[user.id,projectId,address,requestedDate,totals.itemsTotalKopecks,totals.deliveryTotalKopecks,destinationCoordinates?.[0] ?? null,destinationCoordinates?.[1] ?? null]);
       const id = created.rows[0].id;
       for (const line of totals.lines) {
         await client.query('UPDATE offers SET stock=stock-$1 WHERE id=$2',[line.quantity,line.offerId]);
         await client.query('INSERT INTO order_items(order_id,offer_id,supplier_id,product_name,unit,quantity,price_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7)',[id,line.offerId,line.supplierId,line.productName,line.unit,line.quantity,line.priceKopecks]);
       }
-      for (const [supplierId,cost] of totals.deliveryBySupplier) await client.query('INSERT INTO deliveries(order_id,supplier_id,delivery_cost_kopecks,route) VALUES($1,$2,$3,$4)',[id,supplierId,cost,JSON.stringify([[48.033,46.35],[48.045,46.36],[48.055,46.37]])]);
+      for (const [supplierId,cost] of totals.deliveryBySupplier) await client.query('INSERT INTO deliveries(order_id,supplier_id,delivery_cost_kopecks,departure_points) VALUES($1,$2,$3,$4)',[id,supplierId,cost,JSON.stringify(snapshotDeparturePoints(offers.filter(offer=>offer.supplier_id===supplierId)))]);
       await client.query('INSERT INTO idempotency_keys(buyer_id,key,request_hash,order_id) VALUES($1,$2,$3,$4)',[user.id,key,requestHash,id]);
       return id;
     });
@@ -134,10 +138,10 @@ export class OrdersController {
     const user = requireRole(await this.db.user(request.cookies?.om_session),'buyer');
     uuidField(id,'id');
     await this.expireReservations();
-    const order = await this.db.one(`SELECT id,address,to_char(requested_date,'YYYY-MM-DD') AS "requestedDate",reservation_expires_at AS "reservationExpiresAt",project_id AS "projectId",status,items_total_kopecks AS "itemsTotalKopecks",delivery_total_kopecks AS "deliveryTotalKopecks",(items_total_kopecks+delivery_total_kopecks) AS "totalKopecks",created_at AS "createdAt" FROM orders WHERE id=$1 AND buyer_id=$2`,[id,user.id]);
+    const order = await this.db.one(`SELECT id,address,CASE WHEN destination_lon IS NULL THEN NULL ELSE jsonb_build_array(destination_lon,destination_lat) END AS "destinationCoordinates",to_char(requested_date,'YYYY-MM-DD') AS "requestedDate",reservation_expires_at AS "reservationExpiresAt",project_id AS "projectId",status,items_total_kopecks AS "itemsTotalKopecks",delivery_total_kopecks AS "deliveryTotalKopecks",(items_total_kopecks+delivery_total_kopecks) AS "totalKopecks",created_at AS "createdAt" FROM orders WHERE id=$1 AND buyer_id=$2`,[id,user.id]);
     if (!order) throw new ApiError(404,'not_found','Заказ не найден');
     const items = await this.db.rows('SELECT i.id,i.offer_id AS "offerId",i.supplier_id AS "supplierId",s.name AS "supplierName",i.product_name AS "productName",i.quantity,i.unit,i.price_kopecks AS "priceKopecks" FROM order_items i JOIN suppliers s ON s.id=i.supplier_id WHERE i.order_id=$1',[id]);
-    const deliveries = await this.db.rows(`SELECT d.id,d.supplier_id AS "supplierId",s.name AS "supplierName",d.driver_id AS "driverId",d.status,to_char(d.scheduled_date,'YYYY-MM-DD') AS "scheduledDate",d.route,d.delivery_cost_kopecks AS "deliveryCostKopecks" FROM deliveries d JOIN suppliers s ON s.id=d.supplier_id WHERE d.order_id=$1`,[id]);
+    const deliveries = await this.db.rows(`SELECT d.id,d.supplier_id AS "supplierId",s.name AS "supplierName",d.driver_id AS "driverId",d.status,to_char(d.scheduled_date,'YYYY-MM-DD') AS "scheduledDate",d.route,d.departure_points AS "departurePoints",d.delivery_cost_kopecks AS "deliveryCostKopecks" FROM deliveries d JOIN suppliers s ON s.id=d.supplier_id WHERE d.order_id=$1`,[id]);
     return {...normalizeOrderMoney(order),items,deliveries,paymentMode:'demo',trackingMode:'demo'};
   }
 

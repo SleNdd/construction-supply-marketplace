@@ -4,6 +4,7 @@ import { spawn, spawnSync, ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { readFileSync, readdirSync } from 'node:fs';
 import { Pool } from 'pg';
+import { deliveryPointsUpgrade } from './delivery-points-migrations';
 
 const connection=process.env.TEST_DATABASE_URL;
 if (!connection || !new URL(connection).pathname.endsWith('_test')) throw new Error('TEST_DATABASE_URL должен указывать на отдельную базу *_test');
@@ -50,6 +51,8 @@ async function fixture(kind:'upgrade'|'fresh') {
         for (const original of before.get(table)!) {
           const actual={...after.get(original.id)};
           if (table==='products') delete actual.packaging;
+          if (table==='orders') { delete actual.destination_lon; delete actual.destination_lat; }
+          if (table==='deliveries') delete actual.departure_points;
           assert.deepEqual(actual,original,`upgrade не меняет исторические ${table}`);
         }
       }
@@ -92,5 +95,5 @@ async function fixture(kind:'upgrade'|'fresh') {
     await adminPool.query(`DROP DATABASE "${name}"`);
   }
 }
-async function main() { try { await fixture('upgrade'); await fixture('fresh'); } finally { await adminPool.end(); } }
+async function main() { try { await fixture('upgrade'); await fixture('fresh'); await deliveryPointsUpgrade(connection!); } finally { await adminPool.end(); } }
 main().catch(e=>{console.error(e);process.exitCode=1;});

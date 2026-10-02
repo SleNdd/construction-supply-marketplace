@@ -11,6 +11,8 @@ dist/
 build/
 *.tsbuildinfo
 tmp/
+submission/
+local-tools/
 docs/student-review/
 docs/presentation/.build/
 docs/presentation/assets/

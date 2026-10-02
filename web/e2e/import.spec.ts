@@ -86,7 +86,7 @@ test('Ведомость: старое чтение файла не заменя
   });
   await setup(page);
   await upload(page, csv(`${productId},1,`), 'slow.csv');
-  await expect(page.getByRole('status')).toContainText('Читаем slow.csv');
+  await expect(page.getByRole('region', { name: 'Импорт ведомости' }).getByRole('status')).toContainText('Читаем slow.csv');
   await upload(page, csv(`${productId},7,`));
   await expect(preview(page)).toContainText('7 мешков');
   await page.evaluate(() => (window as unknown as { releaseRead: () => void }).releaseRead());
@@ -103,7 +103,7 @@ test('Ведомость: старый ответ каталога не заме
   } });
   first = true;
   await upload(page, csv(`${productId},1,`));
-  await expect(page.getByRole('status')).toContainText('Проверяем');
+  await expect(page.getByRole('region', { name: 'Импорт ведомости' }).getByRole('status')).toContainText('Проверяем');
   await upload(page, csv(`${productId},8,`));
   await expect(preview(page)).toContainText('8 мешков'); release();
   await expect(preview(page)).toContainText(product.name);

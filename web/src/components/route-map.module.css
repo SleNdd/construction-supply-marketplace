@@ -1,0 +1,8 @@
+.panel { min-width: 0; }
+.control { display: grid; gap: 8px; padding: 16px 20px; font-size: 13px; }
+.selector { display: grid; gap: 8px; margin-bottom: 16px; font-size: 13px; font-weight: 600; }
+.selector select, .control select { min-height: 44px; width: 100%; min-width: 0; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font: inherit; }
+.control small { color: var(--muted); line-height: 1.5; }
+.footer small, .footer span { overflow-wrap: anywhere; }
+.footer { gap: 8px; }
+.selector select:focus-visible, .control select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

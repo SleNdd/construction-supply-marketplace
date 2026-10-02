@@ -14,7 +14,7 @@ export class OperationsController {
 
   @Get('dispatch/deliveries') async dispatchDeliveries(@Req() request: Request) {
     requireRole(await this.db.user(request.cookies?.om_session),'dispatcher','admin');
-    return this.db.rows(`SELECT d.id,d.order_id AS "orderId",d.supplier_id AS "supplierId",s.name AS "supplierName",d.driver_id AS "driverId",u.name AS "driverName",d.status,to_char(d.scheduled_date,'YYYY-MM-DD') AS "scheduledDate",o.address,o.status AS "orderStatus",d.route FROM deliveries d JOIN orders o ON o.id=d.order_id JOIN suppliers s ON s.id=d.supplier_id LEFT JOIN users u ON u.id=d.driver_id ORDER BY d.scheduled_date NULLS LAST,o.created_at DESC`);
+    return this.db.rows(`SELECT d.id,d.order_id AS "orderId",d.supplier_id AS "supplierId",s.name AS "supplierName",d.driver_id AS "driverId",u.name AS "driverName",d.status,to_char(d.scheduled_date,'YYYY-MM-DD') AS "scheduledDate",o.address,CASE WHEN o.destination_lon IS NULL THEN NULL ELSE jsonb_build_array(o.destination_lon,o.destination_lat) END AS "destinationCoordinates",o.status AS "orderStatus",d.route,d.departure_points AS "departurePoints" FROM deliveries d JOIN orders o ON o.id=d.order_id JOIN suppliers s ON s.id=d.supplier_id LEFT JOIN users u ON u.id=d.driver_id ORDER BY d.scheduled_date NULLS LAST,o.created_at DESC`);
   }
 
   @Patch('dispatch/deliveries/:id') async assign(@Req() request: Request,@Param('id') id: string,@Body() body: Record<string,unknown>) {
@@ -34,7 +34,7 @@ export class OperationsController {
 
   @Get('driver/deliveries') async driverDeliveries(@Req() request: Request) {
     const user = requireRole(await this.db.user(request.cookies?.om_session),'driver');
-    return this.db.rows(`SELECT d.id,d.order_id AS "orderId",d.status,to_char(d.scheduled_date,'YYYY-MM-DD') AS "scheduledDate",o.address,d.route,s.name AS "supplierName" FROM deliveries d JOIN orders o ON o.id=d.order_id JOIN suppliers s ON s.id=d.supplier_id WHERE d.driver_id=$1 ORDER BY d.scheduled_date NULLS LAST`,[user.id]);
+    return this.db.rows(`SELECT d.id,d.order_id AS "orderId",d.status,to_char(d.scheduled_date,'YYYY-MM-DD') AS "scheduledDate",o.address,CASE WHEN o.destination_lon IS NULL THEN NULL ELSE jsonb_build_array(o.destination_lon,o.destination_lat) END AS "destinationCoordinates",d.route,d.departure_points AS "departurePoints",s.name AS "supplierName" FROM deliveries d JOIN orders o ON o.id=d.order_id JOIN suppliers s ON s.id=d.supplier_id WHERE d.driver_id=$1 ORDER BY d.scheduled_date NULLS LAST`,[user.id]);
   }
 
   @Post('driver/deliveries/:id/events') async event(@Req() request: Request,@Param('id') id: string,@Body() body: Record<string,unknown>) {

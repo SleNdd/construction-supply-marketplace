@@ -1,4 +1,9 @@
 export type User = { id: string; name: string; email: string; role: 'buyer' | 'supplier' | 'dispatcher' | 'driver' | 'admin' };
+export type Coordinates = [number, number];
+export type DeparturePoint = { warehouseId: string; name: string; address: string; coordinates: Coordinates | null };
+export function isCoordinates(value: unknown): value is Coordinates {
+  return Array.isArray(value) && value.length === 2 && value.every(part => typeof part === 'number' && Number.isFinite(part)) && Math.abs(value[0]) <= 180 && Math.abs(value[1]) <= 90;
+}
 export type Category = { id: string; name: string; slug: string };
 export type Offer = { id: string; supplierId: string; supplierName: string; warehouseId: string; warehouseName?: string; warehouseAddress?: string; priceKopecks: number; stock: number; deliveryDays: number; earliestDeliveryDate: string; deliveryCostKopecks: number };
 export type ProductPackaging = { kind: 'tiles'; tileAreaM2: number; tilesPerPack: number } | { kind: 'paint'; packSizeL: number } | { kind: 'dry-mix'; packSizeKg: number };

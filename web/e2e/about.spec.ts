@@ -17,7 +17,7 @@ test('О проекте доступно из подвала и объясняе
   await expect(page.getByText('Функциональный прототип системы снабжения строительного объекта.')).toBeVisible();
   await expect(page.getByText('Статусы поставки водитель отмечает вручную.', { exact: false })).toBeVisible();
   await expect(page.getByText('Тестовая оплата меняет статус заказа. Средства не списываются.')).toBeVisible();
-  await expect(page.getByText('Она не привязана к адресу заказа', { exact: false })).toBeVisible();
+  await expect(page.getByText('Для ручного адреса без координат', { exact: false })).toBeVisible();
   await expect(page.getByText('работа с действующими ключами пока не проверена', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Переключить тему', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
