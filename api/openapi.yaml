@@ -81,6 +81,33 @@ components:
           items: {type: array, items: {type: number}}
           description: 'Для новых поставок пустой массив; историческая демонстрационная геометрия сохраняется. Маршрут для выбранного склада и точки назначения запрашивается отдельно через /geo/route.'
         deliveryCostKopecks: {type: integer}
+    DriverCargoItem:
+      type: object
+      additionalProperties: false
+      required: [id, productName, quantity, unit]
+      properties:
+        id: {type: string, format: uuid, description: ID сохранённой позиции заказа}
+        productName: {type: string, description: Название на момент оформления заказа}
+        quantity: {type: integer, minimum: 1}
+        unit: {type: string, description: Единица продажи на момент оформления заказа}
+    DriverDelivery:
+      type: object
+      additionalProperties: false
+      required: [id, orderId, status, scheduledDate, address, destinationCoordinates, route, departurePoints, supplierName, items]
+      properties:
+        id: {type: string, format: uuid}
+        orderId: {type: string, format: uuid}
+        status: {type: string, enum: [pending, assigned, picked_up, in_transit, delivered, cancelled]}
+        scheduledDate: {type: string, format: date, nullable: true}
+        address: {type: string}
+        destinationCoordinates: {$ref: '#/components/schemas/Coordinates'}
+        route: {$ref: '#/components/schemas/Delivery/properties/route'}
+        departurePoints: {$ref: '#/components/schemas/Delivery/properties/departurePoints'}
+        supplierName: {type: string}
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/DriverCargoItem'}
+          description: 'Сохранённые позиции только этого заказа и поставщика рейса, отсортированные по id. Название, количество и единица не читаются из текущего каталога. При отсутствии позиций — []. Цены и контакты покупателя не передаются.'
     Product:
       type: object
       properties:
@@ -657,7 +684,10 @@ paths:
     get:
       summary: Рейсы текущего водителя
       security: [{session: []}]
-      responses: {'200': {description: Только назначенные текущему водителю рейсы со снимком складов и точкой назначения заказа, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Delivery'}}}}}}
+      responses:
+        '200': {description: Только назначенные текущему водителю рейсы со снимками груза и складов и точкой назначения заказа, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/DriverDelivery'}}}}}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
   /driver/deliveries/{id}/events:
     post:
       summary: Следующий статус учебного рейса

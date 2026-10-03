@@ -96,13 +96,22 @@ test('Настоящая доставка: демооплата, назначе�
   expect((await meResponse.json()).user.id).toBe(assigned.driverId);
   const driverResponse = await page.request.get('/api/v1/driver/deliveries');
   expect(driverResponse.ok()).toBe(true);
-  const driverDeliveries: Array<{ id: string; scheduledDate: string }> = await driverResponse.json();
-  expect(driverDeliveries.find(item => item.id === deliveryId)?.scheduledDate).toBe(scheduledDate);
-  const driverCard = page.locator('.delivery-card').filter({ hasText: address });
+  const driverDeliveries: Array<{ id: string; scheduledDate: string; items: Array<{ id: string; productName: string; quantity: number; unit: string }> }> = await driverResponse.json();
+  const assignedTrip = driverDeliveries.find(item => item.id === deliveryId);
+  expect(assignedTrip?.scheduledDate).toBe(scheduledDate);
+  expect(assignedTrip?.items).toEqual(paidOrder.items.map((item: { id: string; productName: string; quantity: number; unit: string }) => ({ id: item.id, productName: item.productName, quantity: item.quantity, unit: item.unit })));
+  expect(Object.keys(assignedTrip!.items[0]).sort()).toEqual(['id', 'productName', 'quantity', 'unit']);
+  await page.getByRole('button', { name: new RegExp(`РЕЙС #${deliveryId.slice(0, 8).toUpperCase()}`) }).click();
+  const driverCard = page.getByRole('region', { name: 'Выбранный рейс', exact: true });
   await expect(driverCard).toHaveCount(1);
+  await expect(driverCard).toContainText(address);
   await expect(driverCard).toContainText(`РЕЙС #${deliveryId.slice(0, 8).toUpperCase()}`);
   await expect(driverCard.getByText('Назначен', { exact: true })).toBeVisible();
-  await expect(driverCard.locator('.delivery-card-meta')).toContainText('15.10.2030');
+  await expect(driverCard).toContainText('15.10.2030');
+  const cargo = driverCard.getByRole('list', { name: 'Материалы поставки', exact: true });
+  await expect(cargo.getByRole('listitem')).toHaveCount(1);
+  await expect(cargo.getByRole('listitem')).toHaveText(`${product.name}${quantity.toLocaleString('ru-RU')}${paidOrder.items[0].unit}`);
+  await expect(cargo.getByText(paidOrder.items[0].unit, { exact: true })).toBeVisible();
   for (const step of [
     { button: 'Материалы загружены', status: 'picked_up', label: 'Загружен' },
     { button: 'Начать рейс', status: 'in_transit', label: 'В пути' },
@@ -114,6 +123,7 @@ test('Настоящая доставка: демооплата, назначе�
     expect(response.ok()).toBe(true);
     expect(response.request().postDataJSON().status).toBe(step.status);
     expect((await response.json()).status).toBe(step.status);
+    if (step.status === 'delivered') await page.getByRole('button', { name: 'Открыть завершённый рейс' }).click();
     await expect(driverCard.getByText(step.label, { exact: true })).toBeVisible();
   }
   await expect(driverCard.getByRole('button')).toHaveCount(0);

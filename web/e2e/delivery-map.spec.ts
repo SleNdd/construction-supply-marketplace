@@ -74,10 +74,11 @@ test('Назначенный рейс задаёт обе точки; телеф
   for(const theme of ['light','dark']){
     if(theme==='dark'){await page.getByRole('button',{name:'Открыть меню',exact:true}).click();await page.getByRole('button',{name:'Тёмная тема',exact:true}).click();await page.getByRole('button',{name:'Закрыть меню',exact:true}).click();}
     await expect(page.locator('html')).toHaveAttribute('data-theme',theme);
-    for(const name of ['Рейс на карте','Склад отправления'])expect((await page.getByLabel(name).boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    expect((await page.getByRole('button', { name: /Первый поставщик/ }).boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    expect((await page.getByLabel('Склад отправления').boundingBox())?.height).toBeGreaterThanOrEqual(44);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   }
-  await page.getByLabel('Рейс на карте').selectOption('delivery2');await expect.poll(()=>requests.at(-1)?.searchParams.get('toLon')).toBe('48.08');
+  await page.getByRole('button', { name: /Второй поставщик/ }).click();await expect.poll(()=>requests.at(-1)?.searchParams.get('toLon')).toBe('48.08');
   expect(requests.at(-1)?.searchParams.get('fromLon')).toBe('48.03');await expect(page.getByText('Доставка: Другой адрес')).toBeVisible();
 });
 test('Без координат не вызывается маршрут и не рисуется линия',async({page})=>{

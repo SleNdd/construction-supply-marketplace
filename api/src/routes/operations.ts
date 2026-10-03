@@ -34,7 +34,26 @@ export class OperationsController {
 
   @Get('driver/deliveries') async driverDeliveries(@Req() request: Request) {
     const user = requireRole(await this.db.user(request.cookies?.om_session),'driver');
-    return this.db.rows(`SELECT d.id,d.order_id AS "orderId",d.status,to_char(d.scheduled_date,'YYYY-MM-DD') AS "scheduledDate",o.address,CASE WHEN o.destination_lon IS NULL THEN NULL ELSE jsonb_build_array(o.destination_lon,o.destination_lat) END AS "destinationCoordinates",d.route,d.departure_points AS "departurePoints",s.name AS "supplierName" FROM deliveries d JOIN orders o ON o.id=d.order_id JOIN suppliers s ON s.id=d.supplier_id WHERE d.driver_id=$1 ORDER BY d.scheduled_date NULLS LAST`,[user.id]);
+    // Снимок груза читается вместе с назначением рейса; цены и контакты покупателя не нужны водителю.
+    return this.db.rows(`
+      SELECT d.id,d.order_id AS "orderId",d.status,
+        to_char(d.scheduled_date,'YYYY-MM-DD') AS "scheduledDate",o.address,
+        CASE WHEN o.destination_lon IS NULL THEN NULL
+          ELSE jsonb_build_array(o.destination_lon,o.destination_lat) END AS "destinationCoordinates",
+        d.route,d.departure_points AS "departurePoints",s.name AS "supplierName",
+        COALESCE((
+          SELECT jsonb_agg(jsonb_build_object(
+            'id',i.id,'productName',i.product_name,'quantity',i.quantity,'unit',i.unit
+          ) ORDER BY i.id)
+          FROM order_items i
+          WHERE i.order_id=d.order_id AND i.supplier_id=d.supplier_id
+        ),'[]'::jsonb) AS items
+      FROM deliveries d
+      JOIN orders o ON o.id=d.order_id
+      JOIN suppliers s ON s.id=d.supplier_id
+      WHERE d.driver_id=$1
+      ORDER BY d.scheduled_date NULLS LAST
+    `,[user.id]);
   }
 
   @Post('driver/deliveries/:id/events') async event(@Req() request: Request,@Param('id') id: string,@Body() body: Record<string,unknown>) {

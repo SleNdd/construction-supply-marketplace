@@ -7,7 +7,7 @@ import { deliveryPointsIntegration } from './delivery-points-integration';
 
 const connection=process.env.TEST_DATABASE_URL;
 if (!connection || !new URL(connection).pathname.endsWith('_test')) throw new Error('TEST_DATABASE_URL должен указывать на отдельную базу с именем *_test');
-const port=4300+Math.floor(Math.random()*500);
+const port=process.env.API_PORT?Number(process.env.API_PORT):4300+Math.floor(Math.random()*500);
 const base=`http://127.0.0.1:${port}/api/v1`;
 const env={...process.env,DATABASE_URL:connection,DEMO_SEED:'true',API_PORT:String(port),CORS_ORIGIN:'http://localhost:3000'};
 const pool=new Pool({connectionString:connection});
@@ -151,6 +151,101 @@ async function catalogFilters() {
     await pool.query('DELETE FROM products WHERE id=ANY($1::uuid[])',[ids]);
     await pool.query('DELETE FROM categories WHERE id=ANY($1::uuid[])',[categoryIds]);
   }
+}
+
+async function driverCargoContract(buyerCookie:string,adminCookie:string,dispatcher:string,driver:string,driverId:string) {
+  const suffix=randomUUID();
+  const warehouses=(await pool.query<{id:string;supplier_id:string}>(
+    'SELECT DISTINCT ON (supplier_id) id,supplier_id FROM warehouses ORDER BY supplier_id,id LIMIT 2'
+  )).rows;
+  assert.equal(warehouses.length,2,'для груза нужны два поставщика');
+  const category=(await pool.query<{id:string}>('SELECT id FROM categories LIMIT 1')).rows[0].id;
+  const productIds:string[]=[];
+  const offers:string[]=[];
+  for (const [index,unit] of ['мешок','шт.','м³'].entries()) {
+    const product=(await pool.query<{id:string}>(
+      'INSERT INTO products(category_id,slug,name,unit) VALUES($1,$2,$3,$4) RETURNING id',
+      [category,`cargo-${suffix}-${index}`,`Груз ${suffix} ${index}`,unit]
+    )).rows[0].id;
+    productIds.push(product);
+    const warehouse=warehouses[index===2?1:0];
+    offers.push((await pool.query<{id:string}>(
+      'INSERT INTO offers(product_id,supplier_id,warehouse_id,price_kopecks,stock,delivery_days,delivery_cost_kopecks) VALUES($1,$2,$3,100,30,0,1000) RETURNING id',
+      [product,warehouse.supplier_id,warehouse.id]
+    )).rows[0].id);
+  }
+  const created=await request('/orders','POST',{
+    items:offers.map((offerId,index)=>({offerId,quantity:index+2})),address:'Астрахань, Складская, 4'
+  },buyerCookie,randomUUID());
+  assert.equal(created.status,201,JSON.stringify(created.data));
+  const order=created.data;
+  assert.equal(order.deliveries.length,2);
+  assert.equal((await request(`/orders/${order.id}/demo-payment`,'POST',undefined,buyerCookie)).status,201);
+  for (const delivery of order.deliveries) {
+    assert.equal((await request(`/dispatch/deliveries/${delivery.id}`,'PATCH',{driverId},dispatcher)).status,200);
+  }
+  // Та же позиция в другом заказе не должна попасть в груз первого рейса.
+  const otherOrder=await request('/orders','POST',{
+    items:[{offerId:offers[0],quantity:5}],address:'Астрахань, Складская, 5'
+  },buyerCookie,randomUUID());
+  assert.equal(otherOrder.status,201,JSON.stringify(otherOrder.data));
+  const cargoFor=(supplierId:string)=>order.items
+    .filter((item:{supplierId:string})=>item.supplierId===supplierId)
+    .map(({id,productName,quantity,unit}:{id:string;productName:string;quantity:number;unit:string})=>({id,productName,quantity,unit}))
+    .sort((a:{id:string},b:{id:string})=>a.id.localeCompare(b.id));
+  const initial=await request('/driver/deliveries','GET',undefined,driver);
+  assert.equal(initial.status,200,JSON.stringify(initial.data));
+  for (const delivery of order.deliveries) {
+    const row=initial.data.find((entry:{id:string})=>entry.id===delivery.id);
+    assert.ok(row,'назначенный рейс доступен водителю');
+    assert.deepEqual(row.items,cargoFor(delivery.supplierId),'груз ограничен заказом и поставщиком');
+    assert.deepEqual(Object.keys(row).sort(),[
+      'address','departurePoints','destinationCoordinates','id','items','orderId','route','scheduledDate','status','supplierName'
+    ].sort(),'водитель получает только поля рейса без сумм и контактов');
+  }
+  const rename=await request(`/admin/products/${productIds[0]}`,'PATCH',{name:`Новое название ${suffix}`},adminCookie);
+  assert.equal(rename.status,200,JSON.stringify(rename.data));
+  const unitEdit=await request(`/admin/products/${productIds[0]}`,'PATCH',{unit:'кг'},adminCookie);
+  assert.equal(unitEdit.status,400);
+  assert.equal(unitEdit.data.code,'immutable_packaging');
+  const renamed=await request('/driver/deliveries','GET',undefined,driver);
+  assert.equal(renamed.status,200);
+  assert.deepEqual(renamed.data,initial.data,'переименование не меняет название, количество и единицу груза');
+  assert.equal((await request('/driver/deliveries','GET',undefined,buyerCookie)).status,403);
+  assert.equal((await request('/driver/deliveries')).status,401);
+
+  const otherDriverId=randomUUID();
+  const otherEmail=`cargo-driver-${suffix}@example.test`;
+  await pool.query(
+    "INSERT INTO users(id,name,email,password_hash,role) SELECT $1,'Другой водитель груза',$2,password_hash,'driver' FROM users WHERE id=$3",
+    [otherDriverId,otherEmail,driverId]
+  );
+  const login=await request('/auth/login','POST',{email:otherEmail,password:'Demo2026!'});
+  assert.equal(login.status,201,JSON.stringify(login.data));
+  const otherDriver=login.cookie!;
+  assert.deepEqual((await request('/driver/deliveries','GET',undefined,otherDriver)).data,[],'водитель без назначения не видит рейсы и груз');
+  const reassigned=order.deliveries[1];
+  assert.equal((await request(`/dispatch/deliveries/${reassigned.id}`,'PATCH',{driverId:otherDriverId},dispatcher)).status,200);
+  const otherList=await request('/driver/deliveries','GET',undefined,otherDriver);
+  assert.equal(otherList.status,200);
+  assert.deepEqual(otherList.data.map((row:{id:string})=>row.id),[reassigned.id],'другой водитель видит только своё назначение');
+  assert.deepEqual(otherList.data[0].items,cargoFor(reassigned.supplierId));
+  const afterReassign=await request('/driver/deliveries','GET',undefined,driver);
+  assert.equal(afterReassign.status,200);
+  assert.ok(!afterReassign.data.some((row:{id:string})=>row.id===reassigned.id),'прежний водитель теряет доступ к переназначенному рейсу');
+
+  // Изолированная старая запись без позиций: отсутствие груза не подменяется каталогом.
+  assert.equal((await request(`/orders/${otherOrder.data.id}/demo-payment`,'POST',undefined,buyerCookie)).status,201);
+  await pool.query('DELETE FROM order_items WHERE order_id=$1',[otherOrder.data.id]);
+  const emptyDelivery=otherOrder.data.deliveries[0];
+  assert.equal((await request(`/dispatch/deliveries/${emptyDelivery.id}`,'PATCH',{driverId},dispatcher)).status,200);
+  const legacy=await request('/driver/deliveries','GET',undefined,driver);
+  assert.equal(legacy.status,200);
+  const legacyRow=legacy.data.find((row:{id:string})=>row.id===emptyDelivery.id);
+  assert.deepEqual(legacyRow.items,[],'рейс без сохранённых позиций возвращает []');
+  assert.deepEqual(legacyRow.departurePoints,emptyDelivery.departurePoints,'груз не меняет снимок складов');
+  assert.deepEqual(legacyRow.destinationCoordinates,otherOrder.data.destinationCoordinates,'груз не придумывает точку назначения');
+  console.log('PASS: груз водителя — снимки, фильтр заказа/поставщика, переназначение, права, пустые старые позиции');
 }
 
 async function main() {
@@ -384,6 +479,7 @@ async function main() {
     for (const [index,delivery] of multi.data.deliveries.entries()) {
       assertCalendarDate(driverList.data.find((row:{id:string})=>row.id===delivery.id).scheduledDate,scheduledDates[index],'список рейсов водителя');
     }
+    await driverCargoContract(a,adminLogin.cookie!,dispatcher,driver,driverId);
     const finishes=await Promise.all(multi.data.deliveries.map((delivery: {id:string})=>request(`/driver/deliveries/${delivery.id}/events`,'POST',{status:'delivered'},driver)));
     assert.ok(finishes.every((result)=>result.status===201),JSON.stringify(finishes));
     assert.equal((await request(`/orders/${multi.data.id}`,'GET',undefined,a)).data.status,'delivered','заказ закрывается после параллельного завершения поставок');
