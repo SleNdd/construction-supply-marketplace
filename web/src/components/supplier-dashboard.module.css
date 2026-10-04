@@ -1,0 +1,240 @@
+.workspace {
+  min-width: 0;
+}
+.workspace button,
+.workspace input,
+.workspace select,
+.dialog button,
+.dialog input,
+.dialog select {
+  min-height: 44px;
+}
+.workspace button,
+.dialog button {
+  white-space: normal;
+}
+.heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.heading h2 {
+  margin: 8px 0 12px;
+}
+.heading p {
+  line-height: 1.6;
+  max-width: 650px;
+}
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.toolbar {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  margin: 16px 0 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.toolbar label {
+  max-width: 520px;
+}
+.toolbar label,
+.form label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 600;
+}
+.toolbar input,
+.form input,
+.form select {
+  width: 100%;
+  min-width: 0;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.filters button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 10px 16px;
+  border-radius: 6px;
+}
+.filters button[aria-pressed='true'] {
+  background: var(--accent-light);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.card {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+  overflow-wrap: anywhere;
+}
+.cardHeading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.cardHeading svg {
+  flex-shrink: 0;
+  color: var(--accent);
+  margin-top: 3px;
+}
+.cardHeading > div {
+  min-width: 0;
+  flex: 1;
+}
+.cardHeading h3 {
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+.cardHeading p {
+  font-size: 13px;
+  color: var(--muted);
+}
+.badge {
+  background: var(--surface-2);
+  padding: 6px 9px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin: 16px 0 24px;
+}
+.facts dt {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.facts dd {
+  margin: 0;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.message,
+.reconcile {
+  padding: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.message button {
+  display: block;
+  margin-top: 10px;
+}
+.dialog {
+  width: min(680px, 100%);
+  min-width: 0;
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  padding: 28px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+.dialog h2 {
+  font-size: 26px;
+}
+.form {
+  border: 0;
+  padding: 0;
+  margin: 20px 0;
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.form .check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+.form .check input {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.hint {
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 13px;
+}
+.reconcile {
+  margin-bottom: 16px;
+}
+.workspace :is(button, input, select):focus-visible,
+.dialog :is(button, input, select):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (max-width: 900px) {
+  .heading {
+    flex-wrap: wrap;
+  }
+  .list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 560px) {
+  .card {
+    padding: 18px;
+  }
+  .cardHeading {
+    flex-wrap: wrap;
+  }
+  .badge {
+    margin-left: 34px;
+  }
+  .dialog {
+    padding: 18px;
+  }
+  .fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .toolbar {
+    padding: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace *,
+  .dialog * {
+    scroll-behavior: auto;
+    transition: none;
+    animation: none;
+  }
+}

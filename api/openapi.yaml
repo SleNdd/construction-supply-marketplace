@@ -340,7 +340,27 @@ paths:
     get:
       summary: Собственные предложения поставщика
       security: [{session: []}]
-      responses: {'200': {description: Список предложений}}
+      responses:
+        '200':
+          description: Список собственных предложений с единицей товара и названием склада
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: {type: string, format: uuid}
+                    productId: {type: string, format: uuid}
+                    productName: {type: string}
+                    productUnit: {type: string}
+                    warehouseId: {type: string, format: uuid}
+                    warehouseName: {type: string}
+                    priceKopecks: {type: integer}
+                    stock: {type: integer}
+                    deliveryDays: {type: integer}
+                    deliveryCostKopecks: {type: integer}
+                    active: {type: boolean}
     post:
       summary: Создать предложение
       security: [{session: []}]
@@ -354,14 +374,15 @@ paths:
               properties:
                 productId: {type: string, format: uuid}
                 warehouseId: {type: string, format: uuid}
-                priceKopecks: {type: integer, minimum: 1}
-                stock: {type: integer, minimum: 0}
-                deliveryDays: {type: integer, minimum: 0}
-                deliveryCostKopecks: {type: integer, minimum: 0}
+                priceKopecks: {type: integer, minimum: 1, maximum: 2147483647}
+                stock: {type: integer, minimum: 0, maximum: 2147483647}
+                deliveryDays: {type: integer, minimum: 0, maximum: 2147483647}
+                deliveryCostKopecks: {type: integer, minimum: 0, maximum: 2147483647}
       responses: {'201': {description: Новое предложение}, '403': {$ref: '#/components/responses/Error'}}
   /supplier/offers/{id}:
     patch:
       summary: Изменить своё предложение
+      description: 'Передавайте только изменяемые поля. При изменении stock обязательно передайте expectedStock — остаток из ранее загруженного предложения. Все поля сохраняются атомарно только при совпадении текущего остатка с expectedStock; конфликт возвращает 409 offer_stock_changed и требует обновить список. Изменение цены без stock не меняет остаток. expectedStock без stock недопустим.'
       security: [{session: []}]
       parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
       requestBody:
@@ -369,13 +390,27 @@ paths:
           application/json:
             schema:
               type: object
+              minProperties: 1
+              oneOf:
+                - required: [stock, expectedStock]
+                - not:
+                    anyOf:
+                      - required: [stock]
+                      - required: [expectedStock]
               properties:
-                priceKopecks: {type: integer, minimum: 1}
-                stock: {type: integer, minimum: 0}
-                deliveryDays: {type: integer, minimum: 0}
-                deliveryCostKopecks: {type: integer, minimum: 0}
+                priceKopecks: {type: integer, minimum: 1, maximum: 2147483647}
+                stock: {type: integer, minimum: 0, maximum: 2147483647}
+                expectedStock: {type: integer, minimum: 0, maximum: 2147483647, description: 'Остаток из ранее загруженного предложения; обязателен только вместе со stock'}
+                deliveryDays: {type: integer, minimum: 0, maximum: 2147483647}
+                deliveryCostKopecks: {type: integer, minimum: 0, maximum: 2147483647}
                 active: {type: boolean}
-      responses: {'200': {description: Изменённое предложение}, '404': {$ref: '#/components/responses/Error'}}
+      responses:
+        '200': {description: Изменённое предложение}
+        '400': {description: 'invalid_input — неверные поля, отсутствующий или некорректный expectedStock либо expectedStock без stock', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {description: 'Предложение отсутствует или принадлежит другому поставщику', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: 'offer_stock_changed — остаток изменился; ни одно поле запроса не сохранено. Обновите список и повторите изменение.', content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /supplier/warehouses:
     get:
       summary: Склады текущего поставщика

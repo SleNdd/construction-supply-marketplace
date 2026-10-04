@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { loginRole } from './fixtures';
 
-type SupplierOffer = { id: string; productName: string; stock: number };
+type SupplierOffer = { id: string; productName: string; warehouseName: string; stock: number };
 
 test('Поставщик меняет остаток предложения и видит сохранённое значение', async ({ page }) => {
   await page.goto('/workspace');
@@ -12,22 +12,25 @@ test('Поставщик меняет остаток предложения и �
   const offers: SupplierOffer[] = await response.json();
   const offer = offers.find(item => item.productName === 'Цемент М500 50 кг');
   expect(offer).toBeTruthy();
-  const row = page.locator('.supplier-offer').filter({ hasText: offer!.productName });
+  const row = page.getByRole('article').filter({ has: page.getByRole('heading', { name: offer!.productName, exact: true }) }).filter({ hasText: offer!.warehouseName });
   try {
     await expect(row).toBeVisible();
     await row.getByRole('button', { name: 'Изменить' }).click();
-    await row.getByLabel('Остаток').fill(String(offer!.stock + 5));
-    await row.getByRole('button', { name: 'Сохранить', exact: true }).click();
-    await expect(row.getByText('Остаток').locator('..').locator('b')).toHaveText(String(offer!.stock + 5));
+    const dialog = page.getByRole('dialog', { name: 'Изменить предложение', exact: true });
+    await dialog.getByLabel('Остаток', { exact: true }).fill(String(offer!.stock + 5));
+    await dialog.getByRole('button', { name: 'Сохранить', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(row.getByText('Остаток', { exact: true }).locator('..').locator('dd')).toContainText(String(offer!.stock + 5));
     await page.reload();
-    await expect(row.getByText('Остаток').locator('..').locator('b')).toHaveText(String(offer!.stock + 5));
+    await expect(row.getByText('Остаток', { exact: true }).locator('..').locator('dd')).toContainText(String(offer!.stock + 5));
     await expect.poll(async () => {
       const fresh: SupplierOffer[] = await (await page.request.get('/api/v1/supplier/offers')).json();
       return fresh.find(item => item.id === offer!.id)?.stock;
     }).toBe(offer!.stock + 5);
   } finally {
+    const current: SupplierOffer[] = await (await page.request.get('/api/v1/supplier/offers')).json();
     const restored = await page.request.patch(`/api/v1/supplier/offers/${offer!.id}`, {
-      headers: { Origin: 'http://localhost:3100' }, data: { stock: offer!.stock },
+      headers: { Origin: 'http://localhost:3100' }, data: { stock: offer!.stock, expectedStock: current.find(item => item.id === offer!.id)!.stock },
     });
     expect(restored.ok(), 'Исходный остаток должен быть восстановлен').toBe(true);
   }

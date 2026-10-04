@@ -4,6 +4,12 @@ import { Db } from '../db';
 import { ApiError, positiveInt, nonnegativeInt, requireRole, uuidField } from '../security';
 import { earliestDateInAstrakhan } from '../calendar-date';
 
+function offerInt(value: unknown, name: string, positive = false): number {
+  const parsed = positive ? positiveInt(value,name) : nonnegativeInt(value,name);
+  if (parsed>2147483647) throw new ApiError(400,'invalid_input',`${name}: требуется целое число ${positive ? 'от 1' : 'от 0'} до 2147483647`);
+  return parsed;
+}
+
 @Controller('api/v1')
 export class CatalogController {
   constructor(private readonly db: Db) {}
@@ -50,7 +56,7 @@ export class CatalogController {
 
   @Get('supplier/offers') async supplierOffers(@Req() request: Request) {
     const user = requireRole(await this.db.user(request.cookies?.om_session),'supplier');
-    return this.db.rows('SELECT o.id,o.product_id AS "productId",p.name AS "productName",o.warehouse_id AS "warehouseId",o.price_kopecks AS "priceKopecks",o.stock,o.delivery_days AS "deliveryDays",o.delivery_cost_kopecks AS "deliveryCostKopecks",o.active FROM offers o JOIN suppliers s ON s.id=o.supplier_id JOIN products p ON p.id=o.product_id WHERE s.owner_id=$1 ORDER BY p.name',[user.id]);
+    return this.db.rows('SELECT o.id,o.product_id AS "productId",p.name AS "productName",p.unit AS "productUnit",o.warehouse_id AS "warehouseId",w.name AS "warehouseName",o.price_kopecks AS "priceKopecks",o.stock,o.delivery_days AS "deliveryDays",o.delivery_cost_kopecks AS "deliveryCostKopecks",o.active FROM offers o JOIN suppliers s ON s.id=o.supplier_id JOIN products p ON p.id=o.product_id JOIN warehouses w ON w.id=o.warehouse_id WHERE s.owner_id=$1 ORDER BY p.name',[user.id]);
   }
 
   @Post('supplier/offers') async addOffer(@Req() request: Request,@Body() body: Record<string,unknown>) {
@@ -60,7 +66,7 @@ export class CatalogController {
     const productId = uuidField(body.productId,'productId');
     const warehouseId = uuidField(body.warehouseId,'warehouseId');
     if (!await this.db.one('SELECT id FROM warehouses WHERE id=$1 AND supplier_id=$2',[warehouseId,supplier.id])) throw new ApiError(403,'forbidden','Склад не принадлежит поставщику');
-    const offer = await this.db.one('INSERT INTO offers(product_id,supplier_id,warehouse_id,price_kopecks,stock,delivery_days,delivery_cost_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',[productId,supplier.id,warehouseId,positiveInt(body.priceKopecks,'priceKopecks'),nonnegativeInt(body.stock,'stock'),nonnegativeInt(body.deliveryDays,'deliveryDays'),nonnegativeInt(body.deliveryCostKopecks,'deliveryCostKopecks')]);
+    const offer = await this.db.one('INSERT INTO offers(product_id,supplier_id,warehouse_id,price_kopecks,stock,delivery_days,delivery_cost_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',[productId,supplier.id,warehouseId,offerInt(body.priceKopecks,'priceKopecks',true),offerInt(body.stock,'stock'),offerInt(body.deliveryDays,'deliveryDays'),offerInt(body.deliveryCostKopecks,'deliveryCostKopecks')]);
     return offer;
   }
 
@@ -69,16 +75,31 @@ export class CatalogController {
     uuidField(id,'id');
     const existing = await this.db.one('SELECT o.id FROM offers o JOIN suppliers s ON s.id=o.supplier_id WHERE o.id=$1 AND s.owner_id=$2',[id,user.id]);
     if (!existing) throw new ApiError(404,'not_found','Предложение не найдено');
+    const hasStock = body.stock !== undefined;
+    if (hasStock !== (body.expectedStock !== undefined)) throw new ApiError(400,'invalid_input','stock и expectedStock: передайте новый и ранее загруженный остаток вместе');
+    const expectedStock = hasStock ? offerInt(body.expectedStock,'expectedStock') : undefined;
     const allowed = ['priceKopecks','stock','deliveryDays','deliveryCostKopecks','active'] as const;
     const values: unknown[]=[]; const sets: string[]=[];
     const columns = {priceKopecks:'price_kopecks',stock:'stock',deliveryDays:'delivery_days',deliveryCostKopecks:'delivery_cost_kopecks',active:'active'};
     for (const key of allowed) if (body[key] !== undefined) {
-      const value = key==='active' ? body[key] : key==='priceKopecks' ? positiveInt(body[key],key) : nonnegativeInt(body[key],key);
+      const value = key==='active' ? body[key] : offerInt(body[key],key,key==='priceKopecks');
       if (key==='active' && typeof value !== 'boolean') throw new ApiError(400,'invalid_input','active: требуется логическое значение');
       values.push(value); sets.push(`${columns[key]}=$${values.length}`);
     }
     if (!sets.length) throw new ApiError(400,'invalid_input','Нет полей для изменения');
     values.push(id);
-    return this.db.one(`UPDATE offers SET ${sets.join(',')} WHERE id=$${values.length} RETURNING *`,values);
+    const idParam = values.length;
+    values.push(user.id);
+    const ownerParam = values.length;
+    let stockCondition = '';
+    if (hasStock) {
+      values.push(expectedStock);
+      stockCondition = ` AND o.stock=$${values.length}`;
+    }
+    // Условие остатка и все изменения входят в один UPDATE, в том числе после ожидания резерва.
+    const updated = await this.db.one(`UPDATE offers o SET ${sets.join(',')} WHERE o.id=$${idParam} AND EXISTS (SELECT 1 FROM suppliers s WHERE s.id=o.supplier_id AND s.owner_id=$${ownerParam})${stockCondition} RETURNING o.*`,values);
+    if (updated) return updated;
+    if (hasStock && await this.db.one('SELECT o.id FROM offers o JOIN suppliers s ON s.id=o.supplier_id WHERE o.id=$1 AND s.owner_id=$2',[id,user.id])) throw new ApiError(409,'offer_stock_changed','Остаток предложения изменился. Обновите список и повторите изменение.');
+    throw new ApiError(404,'not_found','Предложение не найдено');
   }
 }
