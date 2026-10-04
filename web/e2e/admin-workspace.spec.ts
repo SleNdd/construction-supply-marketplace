@@ -106,7 +106,10 @@ test("Ошибка обновления оставляет старый ката
     }
   });
   await expect(
-    products(page).getByRole("button", { name: "Изменить" }),
+    products(page).getByRole("button", {
+      name: "Изменить товар «Кирпич»",
+      exact: true,
+    }),
   ).toBeEnabled();
   failed = true;
   await products(page).getByRole("button", { name: "Обновить товары" }).click();
@@ -140,7 +143,10 @@ test("Отказ категорий блокирует запись товара
     }
   });
   await expect(
-    categories(page).getByRole("button", { name: "Изменить" }),
+    categories(page).getByRole("button", {
+      name: "Изменить категорию «Материалы»",
+      exact: true,
+    }),
   ).toBeEnabled();
   failed = true;
   await categories(page)

@@ -636,6 +636,7 @@ export function AdminDashboard() {
               <button
                 className="btn btn-outline"
                 disabled={categoryReadonly || busy}
+                aria-label={`Изменить категорию «${category.name}»`}
                 onClick={() => openCategory(category)}
               >
                 Изменить
@@ -741,6 +742,7 @@ export function AdminDashboard() {
                 <button
                   className="btn btn-outline"
                   disabled={productReadonly || busy}
+                  aria-label={`Изменить товар «${product.name}»`}
                   onClick={() => openProduct(product)}
                 >
                   Изменить
