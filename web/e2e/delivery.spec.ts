@@ -72,23 +72,42 @@ test('Настоящая доставка: демооплата, назначе�
   await expect(page.locator('.order-detail-head').getByRole('heading')).toHaveText(expectedFormattedTotal);
 
   await switchRole(page, 'dispatcher');
-  const dispatchCard = page.locator('.delivery-card').filter({ hasText: address });
+  await page.getByRole('button', { name: new RegExp(`ПОСТАВКА #${deliveryId.slice(0, 8).toUpperCase()}`) }).click();
+  const dispatchCard = page.getByRole('region', { name: 'Выбранная поставка', exact: true });
   await expect(dispatchCard).toHaveCount(1);
+  await expect(dispatchCard).toContainText(address);
   await expect(dispatchCard).toContainText(`ПОСТАВКА #${deliveryId.slice(0, 8).toUpperCase()}`);
   await expect(dispatchCard.getByText('Ожидает', { exact: true })).toBeVisible();
   await dispatchCard.getByRole('combobox', { name: 'Водитель', exact: true }).selectOption({ label: 'Водитель Демо' });
-  const scheduledDate = '2030-10-15';
-  await dispatchCard.getByLabel('Дата рейса', { exact: true }).fill(scheduledDate);
+  const initialDate = '2030-10-15';
+  await dispatchCard.getByLabel('Дата рейса', { exact: true }).fill(initialDate);
   const assignedResponsePromise = page.waitForResponse(response => new URL(response.url()).pathname === `/api/v1/dispatch/deliveries/${deliveryId}` && response.request().method() === 'PATCH');
   await dispatchCard.getByRole('button', { name: 'Назначить', exact: true }).click();
   const assignedResponse = await assignedResponsePromise;
   expect(assignedResponse.ok()).toBe(true);
   const assigned = await assignedResponse.json();
   expect(assigned.status).toBe('assigned');
-  expect(assigned.scheduledDate).toBe(scheduledDate);
+  expect(assigned.scheduledDate).toBe(initialDate);
   await expect(dispatchCard.getByText('Назначен', { exact: true })).toBeVisible();
+  await expect(dispatchCard.getByLabel('Дата рейса', { exact: true })).toHaveValue(initialDate);
+  await expect(dispatchCard).toContainText('15.10.2030');
+
+  const scheduledDate = '2030-10-16';
+  await dispatchCard.getByLabel('Дата рейса', { exact: true }).fill(scheduledDate);
+  const editedResponsePromise = page.waitForResponse(response => new URL(response.url()).pathname === `/api/v1/dispatch/deliveries/${deliveryId}` && response.request().method() === 'PATCH');
+  const refreshedResponsePromise = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/dispatch/deliveries' && response.request().method() === 'GET');
+  await dispatchCard.getByRole('button', { name: 'Сохранить назначение', exact: true }).click();
+  const editedResponse = await editedResponsePromise;
+  expect(editedResponse.ok()).toBe(true);
+  expect(editedResponse.request().postDataJSON()).toEqual({ driverId: assigned.driverId, scheduledDate });
+  expect(await editedResponse.json()).toMatchObject({ id: deliveryId, driverId: assigned.driverId, scheduledDate, status: 'assigned' });
+  const refreshedResponse = await refreshedResponsePromise;
+  expect(refreshedResponse.ok()).toBe(true);
+  const refreshedDeliveries: Array<{ id: string; driverId: string; scheduledDate: string }> = await refreshedResponse.json();
+  expect(refreshedDeliveries.find(item => item.id === deliveryId)).toMatchObject({ driverId: assigned.driverId, scheduledDate });
   await expect(dispatchCard.getByLabel('Дата рейса', { exact: true })).toHaveValue(scheduledDate);
-  await expect(dispatchCard.locator('.delivery-card-meta')).toContainText('15.10.2030');
+  await expect(dispatchCard).toContainText('16.10.2030');
+  await expect(dispatchCard.getByRole('button', { name: 'Сохранить назначение', exact: true })).toBeEnabled();
 
   await switchRole(page, 'driver');
   const meResponse = await page.request.get('/api/v1/auth/me');
@@ -107,7 +126,7 @@ test('Настоящая доставка: демооплата, назначе�
   await expect(driverCard).toContainText(address);
   await expect(driverCard).toContainText(`РЕЙС #${deliveryId.slice(0, 8).toUpperCase()}`);
   await expect(driverCard.getByText('Назначен', { exact: true })).toBeVisible();
-  await expect(driverCard).toContainText('15.10.2030');
+  await expect(driverCard).toContainText('16.10.2030');
   const cargo = driverCard.getByRole('list', { name: 'Материалы поставки', exact: true });
   await expect(cargo.getByRole('listitem')).toHaveCount(1);
   await expect(cargo.getByRole('listitem')).toHaveText(`${product.name}${quantity.toLocaleString('ru-RU')}${paidOrder.items[0].unit}`);
