@@ -1,0 +1,182 @@
+.workspace {
+  min-width: 0;
+}
+.workspace button,
+.workspace input,
+.dialog button,
+.dialog input,
+.dialog select,
+.navigation a {
+  min-height: 44px;
+}
+.workspace button,
+.dialog button {
+  white-space: normal;
+}
+.navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 14px;
+}
+.navigation a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-weight: 700;
+}
+.navigation a:hover {
+  background: var(--surface-2);
+}
+.panel {
+  min-width: 0;
+  scroll-margin-top: 100px;
+  border-radius: 12px;
+}
+.panel :global(.panel-heading) {
+  gap: 20px;
+  align-items: flex-start;
+}
+.panel :global(.panel-heading) p {
+  margin-bottom: 0;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.note,
+.recovery {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  line-height: 1.6;
+}
+.note {
+  color: var(--muted);
+}
+.workspace :global(.report-stats) {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.workspace :global(.report-stats) > div {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-width: 0;
+}
+.workspace :global(.report-stats) b {
+  font-size: clamp(20px, 2.4vw, 30px);
+  overflow-wrap: anywhere;
+}
+.workspace :global(.report-statuses) > div {
+  border-radius: 8px;
+  justify-content: space-between;
+  min-width: 150px;
+}
+.workspace :global(.admin-category-list) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.workspace :global(.admin-category-row),
+.workspace :global(.admin-product-row) {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px;
+  gap: 16px;
+}
+.workspace :global(.admin-category-row) > div,
+.workspace :global(.admin-product-row) > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.workspace :global(.admin-product-row) small {
+  line-height: 1.6;
+}
+.dialog {
+  width: min(720px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  padding: 30px;
+  border-radius: 12px;
+  min-width: 0;
+}
+.dialog :global(.form-info) {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+.fields {
+  display: grid;
+  gap: 16px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.fields label,
+.fields input,
+.fields select,
+.fields textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+.fields :global(.admin-form-grid) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.fields textarea {
+  resize: vertical;
+}
+.fields:disabled {
+  opacity: 0.75;
+}
+@media (max-width: 760px) {
+  .workspace :global(.report-stats),
+  .workspace :global(.admin-category-list) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .panel :global(.panel-heading) {
+    flex-direction: column;
+  }
+}
+@media (max-width: 480px) {
+  .panel {
+    padding: 18px;
+  }
+  .navigation a {
+    flex: 1;
+    padding: 10px;
+  }
+  .workspace :global(.admin-product-row),
+  .workspace :global(.admin-category-row) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .workspace :global(.admin-search) > div {
+    flex-direction: column;
+  }
+  .workspace :global(.admin-pagination) {
+    flex-wrap: wrap;
+  }
+  .fields :global(.admin-form-grid) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dialog {
+    padding: 24px 18px;
+  }
+  .dialog input,
+  .dialog select,
+  .dialog textarea {
+    font-size: 16px;
+  }
+}

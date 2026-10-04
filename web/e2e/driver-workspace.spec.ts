@@ -39,7 +39,7 @@ async function fixture(page: Page, rows = [trip('old-trip', 'Архивный', 
     throw new Error(`Неожиданный запрос: ${path}`);
   });
   await page.goto('/workspace');
-  await expect(page.getByRole('button', { name: /Активные/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Обновить', exact: true })).toBeEnabled();
   return state;
 }
 const detail = (page: Page) => page.getByRole('region', { name: 'Выбранный рейс', exact: true });
