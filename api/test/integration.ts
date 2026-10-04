@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { packagingIntegration } from './packaging-integration';
 import { deliveryPointsIntegration } from './delivery-points-integration';
 import { supplierStockIntegration } from './supplier-stock';
+import { deliveryLifecycleIntegration } from './delivery-lifecycle-integration';
 
 const connection=process.env.TEST_DATABASE_URL;
 if (!connection || !new URL(connection).pathname.endsWith('_test')) throw new Error('TEST_DATABASE_URL должен указывать на отдельную базу с именем *_test');
@@ -284,6 +285,7 @@ async function main() {
     await packagingIntegration(request,pool,a,b,adminLogin.cookie!);
     await deliveryPointsIntegration(request,pool,a,b);
     await supplierStockIntegration(request,pool,a);
+    await deliveryLifecycleIntegration(request,pool,a);
     const withoutOffer=await request('/admin/products','POST',{categoryId:product.categoryId,slug:'test-without-offer',name:'Товар без предложения',unit:'шт.'},adminLogin.cookie);
     assert.equal(withoutOffer.status,201,JSON.stringify(withoutOffer.data));
     for(const direction of ['price_asc','price_desc']) {
