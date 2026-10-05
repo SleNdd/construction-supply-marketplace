@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 import { createHash } from 'node:crypto';
 import { hashPassword } from '../src/security';
-import type { Packaging } from '../src/packaging';
+import { calculateMaterial, normalizeMaterialRequest, type MaterialProduct, type Packaging } from '../src/packaging';
 import { earliestDateInAstrakhan } from '../src/calendar-date';
 
 const id = (key: string) => {
@@ -70,6 +70,22 @@ async function main() {
     const firstStage=earliestDateInAstrakhan(30,now);
     await client.query('INSERT INTO projects(id,buyer_id,name,address,stages) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[id('project-demo'),id('buyer'),'Ремонт жилого дома','Астрахань, ул. Савушкина, 6',JSON.stringify([{name:'Черновые работы',date:firstStage},{name:'Отделка',date:earliestDateInAstrakhan(60,now)}])]);
     await client.query('INSERT INTO project_items(id,project_id,product_id,quantity,stage_date) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[id('project-item-cement'),id('project-demo'),id('cement'),12,firstStage]);
+    // На чистой базе есть готовый пример закупки с расчётом фасовки.
+    if (freshCatalog) {
+      const secondStage=earliestDateInAstrakhan(60,now);
+      const projectId=id('project-finishing');
+      await client.query('INSERT INTO projects(id,buyer_id,name,address,stages) VALUES($1,$2,$3,$4,$5)',[projectId,id('buyer'),'Отделка учебного объекта','Астрахань, ул. Савушкина, 6',JSON.stringify([{name:'Облицовка',date:firstStage},{name:'Окраска',date:secondStage}])]);
+      const calculations=[
+        {key:'tile-beige-box',kind:'tiles',inputs:{areaM2:24,wastePercent:10},date:firstStage},
+        {key:'adhesive',kind:'dry-mix',inputs:{areaM2:24,layerMm:5,rateKgPerM2Mm:1.5,wastePercent:10},date:firstStage},
+        {key:'paint-white',kind:'paint',inputs:{areaM2:65,rateLPerM2:0.16,coats:2,wastePercent:10},date:secondStage},
+      ];
+      for (const row of calculations) {
+        const product=(await client.query<MaterialProduct>('SELECT id,name,unit,packaging FROM products WHERE id=$1',[id(row.key)])).rows[0];
+        const calculation=calculateMaterial(product,normalizeMaterialRequest({productId:product.id,kind:row.kind,inputs:row.inputs}));
+        await client.query('INSERT INTO project_items(id,project_id,product_id,quantity,stage_date) VALUES($1,$2,$3,$4,$5)',[id(`project-finishing-${row.key}`),projectId,product.id,calculation.packages,row.date]);
+      }
+    }
     for (const demo of [
       {key:'demo-order-active',product:'cement',quantity:4,status:'paid',delivery:'assigned'},
       {key:'demo-order-complete',product:'paint-white',quantity:2,status:'delivered',delivery:'delivered'},
@@ -82,7 +98,7 @@ async function main() {
       if (!inserted.rowCount) continue;
       await client.query('UPDATE offers SET stock=stock-$1 WHERE id=$2',[demo.quantity,offerId]);
       await client.query('INSERT INTO order_items(id,order_id,offer_id,supplier_id,product_name,unit,quantity,price_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id(`${demo.key}-item`),id(demo.key),offerId,id('volga'),demo.product==='cement'?'Цемент М500 50 кг':'Краска интерьерная белая 10 л',offer.rows[0].unit,demo.quantity,price]);
-      await client.query('INSERT INTO deliveries(id,order_id,supplier_id,driver_id,status,scheduled_date,route,delivery_cost_kopecks) VALUES($1,$2,$3,$4,$5,current_date+1,$6,$7)',[id(`${demo.key}-delivery`),id(demo.key),id('volga'),id('driver'),demo.delivery,JSON.stringify([[48.003,46.351],[48.025,46.36],[48.057,46.371]]),deliveryCost]);
+      await client.query('INSERT INTO deliveries(id,order_id,supplier_id,driver_id,status,scheduled_date,route,delivery_cost_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id(`${demo.key}-delivery`),id(demo.key),id('volga'),id('driver'),demo.delivery,earliestDateInAstrakhan(1,now),JSON.stringify([[48.003,46.351],[48.025,46.36],[48.057,46.371]]),deliveryCost]);
     }
     await client.query('COMMIT');
     console.log('Демоданные добавлены; существующие записи не изменены. Пароль демонстрационных аккаунтов: Demo2026!');
