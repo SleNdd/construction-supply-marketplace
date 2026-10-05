@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowDownRight, ArrowRight, ArrowUpRight, Building2, Check, ChevronDown, Clock3, ClipboardList, Layers3, LayoutDashboard, MapPin, Menu, Moon, Package, Search, ShoppingBag, SlidersHorizontal, Sun, Truck, UserRound, X } from 'lucide-react';
+import { ArrowDownRight, ArrowRight, ArrowUpRight, Building2, Check, ChevronDown, Clock3, ClipboardList, Layers3, LayoutDashboard, LogOut, MapPin, Menu, Moon, Package, Search, ShoppingBag, SlidersHorizontal, Sun, Truck, UserRound, X } from 'lucide-react';
 import { api, type CartItem, type Category, type Product, type User, money } from '@/lib/api';
 import { readCart, readCompare, saveCart, saveCompare } from '@/lib/storage';
 import { useDialogFocus } from '@/lib/use-dialog-focus';
@@ -85,6 +85,7 @@ export function Marketplace() {
           <Link className={current === 'compare' ? 'active' : ''} href="/compare">Сравнение{compare.length > 0 && <span className="nav-count">{compare.length}</span>}</Link>
           {user && <Link className={current === 'workspace' ? 'active' : ''} href="/workspace">Рабочий кабинет</Link>}
           <button className="mobile-theme-option" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <Moon size={18}/> : <Sun size={18}/>} {theme === 'light' ? 'Тёмная тема' : 'Светлая тема'}</button>
+          {user && <button type="button" className="mobile-logout" onClick={() => { setMenu(false); void logout(); }}><LogOut size={18}/>Выйти</button>}
         </nav>
         <div className="header-actions">
           <button className="icon-button theme-button" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} title={theme === 'light' ? 'Тёмная тема' : 'Светлая тема'} aria-label="Переключить тему">{theme === 'light' ? <Moon size={19} /> : <Sun size={19} />}</button>
