@@ -2,6 +2,7 @@ import { Pool } from 'pg';
 import { createHash } from 'node:crypto';
 import { hashPassword } from '../src/security';
 import type { Packaging } from '../src/packaging';
+import { earliestDateInAstrakhan } from '../src/calendar-date';
 
 const id = (key: string) => {
   const h = createHash('md5').update(`objectmarket-demo-${key}`).digest('hex');
@@ -65,9 +66,9 @@ async function main() {
         await client.query('INSERT INTO offers(id,product_id,supplier_id,warehouse_id,price_kopecks,stock,delivery_days,delivery_cost_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING',[id(`offer-${key}-${supplier}`),id(key),id(supplier),id(warehouse),price,stock,1+supplierIndex,65000+supplierIndex*20000]);
       }
     }
-    const stageInDays=(days:number)=>{const date=new Date();date.setUTCDate(date.getUTCDate()+days);return date.toISOString().slice(0,10);};
-    const firstStage=stageInDays(30);
-    await client.query('INSERT INTO projects(id,buyer_id,name,address,stages) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[id('project-demo'),id('buyer'),'Ремонт жилого дома','Астрахань, ул. Савушкина, 6',JSON.stringify([{name:'Черновые работы',date:firstStage},{name:'Отделка',date:stageInDays(60)}])]);
+    const now=new Date();
+    const firstStage=earliestDateInAstrakhan(30,now);
+    await client.query('INSERT INTO projects(id,buyer_id,name,address,stages) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[id('project-demo'),id('buyer'),'Ремонт жилого дома','Астрахань, ул. Савушкина, 6',JSON.stringify([{name:'Черновые работы',date:firstStage},{name:'Отделка',date:earliestDateInAstrakhan(60,now)}])]);
     await client.query('INSERT INTO project_items(id,project_id,product_id,quantity,stage_date) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[id('project-item-cement'),id('project-demo'),id('cement'),12,firstStage]);
     for (const demo of [
       {key:'demo-order-active',product:'cement',quantity:4,status:'paid',delivery:'assigned'},
