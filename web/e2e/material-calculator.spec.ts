@@ -21,6 +21,7 @@ async function fixture(page: Page, preview?: (route: Route) => Promise<void>, ad
     if (path === '/auth/me') return reply(route, { user: { id: 'buyer', name: 'Покупатель', email: 'buyer@example.test', role: 'buyer' } });
     if (path === '/categories') return reply(route, []);
     if (path === '/geo/config') return reply(route, { mapKey: null, source: 'demo' });
+    if (path === '/geo/suggest') return reply(route, { source: 'demo', items: [] });
     if (path === '/geo/route') return reply(route, { source: 'demo' });
     if (path === '/products') return reply(route, { items: materials, page: 1, total: materials.length });
     if (path.startsWith('/products/')) return reply(route, materials.find(product => product.id === path.split('/').at(-1)));

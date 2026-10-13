@@ -364,3 +364,4 @@ html[data-theme=dark] .hero-search input::placeholder,html[data-theme=dark] .cat
 @media(max-width:560px){.brand{width:auto;gap:6px;font-size:18px}.brand-logo{width:29px;height:29px}.brand small{font-size:7px}.footer-brand .brand-logo{width:32px;height:32px}}
 @media(max-width:560px){.category-card-bottom{flex:1;min-width:0;width:auto}.category-card-bottom b{overflow-wrap:anywhere}.brand{font-size:16px}.brand-logo{width:28px;height:28px}}
 .brand{font-size:18px}@media(min-width:561px) and (max-width:1150px){.brand{gap:6px;font-size:17px}.brand-logo{width:28px;height:28px}.brand small{font-size:7px}}@media(max-width:560px){.brand{font-size:16px}}
+@media(max-width:680px){.site-header:has(.main-nav.open) .header-topline .logout{display:none}}

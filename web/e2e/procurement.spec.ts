@@ -40,6 +40,7 @@ async function mockPlan(page: Page, stageDate: () => string, onQuote: (route: Ro
       return reply(route, need());
     }
     if (path === '/geo/config') return reply(route, { mapKey: null, source: 'demo' });
+    if (path === '/geo/suggest') return reply(route, { source: 'demo', items: [] });
     if (path === '/geo/route') return reply(route, { source: 'demo' });
     if (path === '/quotes') return onQuote(route);
     throw new Error(`Неожиданный запрос в проверке плана: ${path}`);

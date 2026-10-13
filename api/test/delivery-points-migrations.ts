@@ -22,7 +22,8 @@ export async function deliveryPointsUpgrade(connection: string) {
       await pool.query(readFileSync(`migrations/${migration}`,'utf8'));
       await pool.query('INSERT INTO schema_migrations(name) VALUES($1)',[migration]);
     }
-    run('scripts/seed.ts');
+    // Для схемы до 006 нужен сохранённый набор до появления адресных точек.
+    run('test/fixtures/pre-delivery-points-seed.ts');
     const buyer = (await pool.query("SELECT id FROM users WHERE email='buyer@example.test'")).rows[0].id;
     const offer = (await pool.query('SELECT o.id,o.supplier_id,o.price_kopecks,o.delivery_cost_kopecks,p.name,p.unit FROM offers o JOIN products p ON p.id=o.product_id WHERE stock>0 ORDER BY o.id LIMIT 1')).rows[0];
     const order = randomUUID(), delivery = randomUUID(), key = randomUUID();
