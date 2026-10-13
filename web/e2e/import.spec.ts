@@ -17,7 +17,7 @@ async function setup(page: Page, options: { products?: (route: Route) => Promise
     const path = new URL(route.request().url()).pathname.replace('/api/v1', '');
     if (path === '/auth/me') return reply(route, { user: { id: 'buyer', name: 'Покупатель', role: 'buyer', email: 'buyer@example.test' } });
     if (path === '/categories' || path === '/projects') return reply(route, []);
-    if (path === '/products') return options.products ? options.products(route) : reply(route, { items: [product], total: 1, page: 1 });
+    if (path === '/products') return options.products && new URL(route.request().url()).searchParams.has('page') ? options.products(route) : reply(route, { items: [product], total: 1, page: 1 });
     if (path === `/projects/${projectId}`) return reply(route, { id: projectId, name: 'Импорт объекта', address: 'Астрахань', items: [] });
     if (path === `/projects/${projectId}/items`) return options.send ? options.send(route) : reply(route, { id: 'added' });
     if (path === '/geo/config' || path === '/geo/route') return reply(route, { source: 'demo', mapKey: null });
