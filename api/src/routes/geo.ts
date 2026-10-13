@@ -1,5 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiError } from '../security';
+import { preparedRoutes } from '../geodata/prepared-routes';
 
 const demoAddresses = [
   {value:'Астрахань, ул. Савушкина, 6',coordinates:[48.057,46.371]},
@@ -47,7 +48,7 @@ function metric(value: unknown): number {
 
 @Controller('api/v1/geo')
 export class GeoController {
-  @Get('config') config() { return {mapKey:process.env.GIS_MAP_KEY||null,source:process.env.GIS_MAP_KEY?'2gis':'demo'}; }
+  @Get('config') config() { return {mapKey:process.env.GIS_MAP_KEY||null,source:process.env.GIS_MAP_KEY?'2gis':'osm'}; }
 
   @Get('suggest') async suggest(@Query('q') raw: string) {
     if (typeof raw !== 'string') throw new ApiError(400,'invalid_input','Введите от 2 до 100 символов адреса');
@@ -73,11 +74,48 @@ export class GeoController {
     } catch { console.error('DaData request failed'); throw new ApiError(502,'geocoding_unavailable','Сервис адресных подсказок временно недоступен'); }
   }
 
+  private routeCache = new Map<string, { expires: number; value: { source: string; coordinates: number[][]; distanceMeters: number; durationSeconds: number } }>();
+  private nextRequestAt = 0;
+
+  private async openRoute(fromLon: number, fromLat: number, toLon: number, toLat: number) {
+    const cacheKey = [fromLon, fromLat, toLon, toLat].join(',');
+    const cached = this.routeCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) return cached.value;
+    // Общественный OSRM допускает не более одного запроса в секунду.
+    if (Date.now() < this.nextRequestAt) throw new ApiError(503, 'routing_busy', 'Сервис маршрутов занят. Повторите через несколько секунд');
+    this.nextRequestAt = Date.now() + 1100;
+    try {
+      const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson&steps=false`, {
+        headers: { 'User-Agent': 'StroyPotok/1.0 (+https://github.com/SleNdd/construction-supply-marketplace)' }, signal: AbortSignal.timeout(4500),
+      });
+      if (!response.ok) throw new Error('OSRM HTTP error');
+      const data = record(await response.json());
+      if (data.code !== 'Ok' || !Array.isArray(data.routes) || !data.routes.length) throw new Error('No road route');
+      const route = record(data.routes[0]), geometry = record(route.geometry);
+      if (geometry.type !== 'LineString' || !Array.isArray(geometry.coordinates) || geometry.coordinates.length < 2) throw new Error('Invalid route');
+      const coordinates = geometry.coordinates.map(raw => {
+        if (!Array.isArray(raw) || raw.length !== 2) throw new Error('Invalid point');
+        return [externalCoordinate(raw[0], 180), externalCoordinate(raw[1], 90)];
+      });
+      const value = { source: 'osrm', coordinates, distanceMeters: metric(route.distance), durationSeconds: metric(route.duration) };
+      if (this.routeCache.size >= 50) this.routeCache.delete(this.routeCache.keys().next().value!);
+      this.routeCache.set(cacheKey, { expires: Date.now() + 86400000, value });
+      return value;
+    } catch {
+      console.error('OSRM routing request failed');
+      throw new ApiError(502, 'routing_unavailable', 'Маршрут по дорогам недоступен. Точки поставки остаются на карте');
+    }
+  }
+
   @Get('route') async route(@Query() query: Record<string,string>) {
     const fromLon=coordinate(query.fromLon,'fromLon',180),fromLat=coordinate(query.fromLat,'fromLat',90);
     const toLon=coordinate(query.toLon,'toLon',180),toLat=coordinate(query.toLat,'toLat',90);
     const key = process.env.GIS_ROUTING_KEY;
-    if (!key) return {source:'demo',coordinates:[[fromLon,fromLat],[Math.min(180,(fromLon+toLon)/2+0.004),(fromLat+toLat)/2],[toLon,toLat]],distanceMeters:null,durationSeconds:null,note:'Схематический маршрут, не предназначенный для навигации'};
+    if (!key) {
+      const saved = preparedRoutes.routes.find(route => route.from[0] === fromLon && route.from[1] === fromLat && route.to[0] === toLon && route.to[1] === toLat);
+      if (saved) return { source: 'prepared', coordinates: saved.coordinates, distanceMeters: saved.distanceMeters, durationSeconds: saved.durationSeconds, capturedAt: preparedRoutes.capturedAt };
+      return this.openRoute(fromLon, fromLat, toLon, toLat);
+    }
     try {
       const response=await fetch(`https://routing.api.2gis.com/routing/7.0.0/global?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({points:[{type:'stop',lon:fromLon,lat:fromLat},{type:'stop',lon:toLon,lat:toLat}],transport:'driving',output:'detailed',route_mode:'fastest',traffic_mode:'jam',locale:'ru'}),signal:AbortSignal.timeout(8000)});
       if (!response.ok) throw new Error(`2GIS ${response.status}`);

@@ -37,7 +37,7 @@ export function Compare({ ids, addToCart, toggleCompare }: Props) {
         <div className={styles.fields}>
           <label>Адрес доставки<input value={address} maxLength={300} onChange={event => { setAddress(event.target.value); setRevision(value => value + 1); }} placeholder="Астрахань, улица, дом" autoComplete="street-address"/></label>
           <label>Желаемая дата<input type="date" value={date} onChange={event => { setDate(event.target.value); setRevision(value => value + 1); }} aria-describedby="comparison-date-hint"/></label>
-          <small id="comparison-date-hint">Дата необязательна. Доставка демонстрационная.</small>
+          <small id="comparison-date-hint">Дата необязательна. Условия поставки проверяются при оформлении.</small>
         </div>
       </section>
       <p className={styles.explanation}>Предложение выбрано по цене с доставкой. Поставщика можно изменить.</p>
@@ -124,7 +124,7 @@ function ComparisonCard({ id, index, address, date, revision, addToCart, onRemov
           <dl className={styles.totals}><div><dt>Материалы</dt><dd>{money(quote.itemsTotalKopecks)}</dd></div><div><dt>Доставка</dt><dd>{money(quote.deliveryTotalKopecks)}</dd></div><div className={styles.total}><dt>Итого за вариант</dt><dd>{money(quote.totalKopecks)}</dd></div></dl>
           {quote.warnings.map((warning, i) => <p className="form-warning" key={i}>{warning}</p>)}
           {quote.unavailable.map(value => <p className="form-error" role="alert" key={value.offerId}>{value.reason}</p>)}
-          {!quote.zoneAvailable && <p className="form-error" role="alert">Адрес вне демонстрационной зоны доставки Астрахани.</p>}
+          {!quote.zoneAvailable && <p className="form-error" role="alert">Адрес вне доступной зоны доставки Астрахани.</p>}
           {changedDate && <p className="form-error" role="alert">Ближайшая дата изменилась. Предложение не успевает к выбранному сроку.</p>}
           {!line && <p className="form-error" role="alert">Предложение изменилось. Обновите условия закупки.</p>}
         </>}

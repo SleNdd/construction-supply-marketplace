@@ -26,5 +26,5 @@ export function MaterialArt({ product, large = false }: { product: Product; larg
     </div>;
   }
 
-  return <div className={`material-art material-${kind}${large ? ' large' : ''}`} aria-label={`Иллюстрация категории товара: ${product.name}`} role="img"><span className="art-grid"/><span className="art-object a"/><span className="art-object b"/><span className="art-object c"/><span className="art-label">ОМ / {kind.toUpperCase()}</span></div>;
+  return <div className={`material-art material-${kind}${large ? ' large' : ''}`} aria-label={`Иллюстрация категории товара: ${product.name}`} role="img"><span className="art-grid"/><span className="art-object a"/><span className="art-object b"/><span className="art-object c"/><span className="art-label">{kind === 'mix' ? 'СУХИЕ СМЕСИ' : 'МАТЕРИАЛЫ'}</span></div>;
 }

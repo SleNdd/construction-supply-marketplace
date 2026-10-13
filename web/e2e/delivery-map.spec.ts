@@ -86,11 +86,17 @@ test('Без координат не вызывается маршрут и не
   await expect(page.getByText('Точка доставки не выбрана.',{exact:false})).toBeVisible();await expect(page.getByTestId('route-geometry')).toHaveCount(0);expect(requests).toBe(0);
 });
 
-for(const axis of ['horizontal','vertical'])test(`Геометрия ${axis} занимает видимый участок сетки`,async({page})=>{
-  await fixture(page,async route=>reply(route,{source:'demo',coordinates:axis==='horizontal'?[[48,46],[48.01,46]]:[[48,46],[48,46.01]],distanceMeters:null,durationSeconds:null}));
-  const line=page.getByTestId('route-geometry');await expect(page.getByRole('img',{name:'Геометрия выбранного участка доставки'})).toBeVisible();await expect(line).toHaveAttribute('points',/.+/);
-  const points=(await line.getAttribute('points'))!.split(' ').map(pair=>pair.split(',').map(Number));
-  expect(Math.abs(points[1][axis==='horizontal'?0:1]-points[0][axis==='horizontal'?0:1])).toBeGreaterThanOrEqual(159);
+test('Кликабельные метки и настоящая проекция сохраняются при отказе подложки',async({page})=>{
+  await page.route('https://tile.openstreetmap.org/**', route=>route.abort());
+  await fixture(page,async route=>reply(route,geometry(route,'prepared')));
+  const line=page.getByTestId('route-geometry'); await expect(line).toBeVisible();
+  await expect(line).toHaveAttribute('d',/^M.+L/);
+  await page.getByTestId('destination-marker').click();
+  await expect(page.locator('.leaflet-popup-content')).toContainText(addressText);
+  await page.getByTestId('warehouse-marker-w2').click();
+  await page.getByRole('button',{name:'Показать маршрут отсюда'}).click();
+  await expect(page.getByLabel('Склад отправления')).toHaveValue('w2');
+  await expect(page.getByTestId('destination-marker')).toBeVisible();
 });
 
 test('Без координат склада маршрут не вызывается',async({page})=>{

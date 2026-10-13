@@ -6,7 +6,7 @@
 .conditions summary { font-size: 13px; color: var(--muted); cursor: pointer; line-height: 1.5; }
 .fields { display: grid; grid-template-columns: 1fr 190px; gap: 14px; align-content: center; }
 .fields label, .purchase label { display: block; font-size: 12px; font-weight: 700; min-width: 0; }
-.fields input, .purchase input, .purchase select { margin-top: 8px; width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--surface); font: inherit; font-size: 14px; }
+.fields input, .purchase input, .purchase select { margin-top: 8px; width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: var(--surface); font: inherit; font-size: 14px; }
 .fields small { grid-column: 1 / -1; color: var(--muted); line-height: 1.5; }
 .explanation { margin: 20px 0; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: start; }

@@ -1,5 +1,5 @@
 {
-  "name": "objectmarket-web",
+  "name": "stroypotok-web",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -15,6 +15,7 @@
     "@2gis/mapgl": "^1.49.0",
     "@fontsource/manrope": "^5.2.8",
     "@fontsource/onest": "^5.2.8",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
     "next": "^15.2.4",
     "react": "^19.0.0",
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@playwright/test": "^1.63.0",
+    "@types/leaflet": "^1.9.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.12",
     "@types/react-dom": "^19.0.4",

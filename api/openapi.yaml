@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: ОбъектМаркет API
+  title: СтройПоток API
   version: 1.0.0
   description: 'API учебной системы закупки строительных материалов. Суммы — в копейках; реальные платежи и GPS отсутствуют. Демонстрационная доставка доступна только для строк адреса вида «Астрахань, улица, дом» или «г. Астрахань, улица, дом».'
 servers:
@@ -755,10 +755,10 @@ paths:
       responses: {'200': {description: source и массив items}, '502': {$ref: '#/components/responses/Error'}}
   /geo/route:
     get:
-      summary: Маршрут 2ГИС или схематический маршрут демо
+      summary: Дорожный маршрут 2ГИС, OSRM или сохранённый маршрут
       parameters:
         - {name: fromLon, in: query, required: true, schema: {type: number}}
         - {name: fromLat, in: query, required: true, schema: {type: number}}
         - {name: toLon, in: query, required: true, schema: {type: number}}
         - {name: toLat, in: query, required: true, schema: {type: number}}
-      responses: {'200': {description: 'Источник, координаты [долгота, широта], дистанция и время'}, '502': {$ref: '#/components/responses/Error'}}
+      responses: {'200': {description: 'source (2gis, osrm или prepared), координаты [долгота, широта], дистанция в метрах и время в секундах; у prepared также capturedAt'}, '502': {$ref: '#/components/responses/Error'}, '503': {$ref: '#/components/responses/Error'}}

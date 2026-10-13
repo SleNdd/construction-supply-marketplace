@@ -1,0 +1,16 @@
+Карта: Leaflet 1.9.4, https://leafletjs.com, BSD-2-Clause.
+Онлайн-подложка: https://tile.openstreetmap.org/{z}/{x}/{y}.png
+Данные карты: © OpenStreetMap contributors, ODbL-1.0.
+Лицензия: https://www.openstreetmap.org/copyright
+Правила подложки: https://operations.osmfoundation.org/policies/tiles/
+
+astrakhan-roads.geojson содержит геометрию шести автомобильных маршрутов,
+полученную 13.10.2026 через https://router.project-osrm.org.
+Это сохранённые дорожные участки для двух учебных складов и четырёх адресов,
+а не полный план Астрахани. Названия улиц не реконструируются.
+Тайлы OSM не скачиваются и не поставляются как офлайн-архив.
+
+OSRM: https://project-osrm.org/docs/v5.24.0/api/
+Общественный сервис: https://github.com/Project-OSRM/osrm-backend/wiki/Demo-server
+Допустимо умеренное некоммерческое использование, максимум один запрос в секунду.
+Доступность и актуальность общественных сервисов не гарантируются.

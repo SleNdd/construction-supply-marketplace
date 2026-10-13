@@ -13,11 +13,12 @@ test('О проекте доступно из подвала и объясняе
   await expect(page.locator('.announcement')).toHaveCount(0);
   await page.getByRole('contentinfo').getByRole('link', { name: 'О проекте' }).click();
   await expect(page).toHaveURL(/\/about$/);
-  await expect(page.getByRole('heading', { name: 'ОбъектМаркет', exact: true })).toBeVisible();
-  await expect(page.getByText('Функциональный прототип системы снабжения строительного объекта.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'СтройПоток', exact: true })).toBeVisible();
+  await expect(page.getByText('Ведомость материалов, предложения поставщиков и поставки к этапам строительства.')).toBeVisible();
   await expect(page.getByText('Статусы поставки водитель отмечает вручную.', { exact: false })).toBeVisible();
   await expect(page.getByText('Тестовая оплата меняет статус заказа. Средства не списываются.')).toBeVisible();
   await expect(page.getByText('Для ручного адреса без координат', { exact: false })).toBeVisible();
+  await expect(page.getByText('Карта OpenStreetMap показывает объект и склады.', { exact: false })).toBeVisible();
   await expect(page.getByText('работа с действующими ключами пока не проверена', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Переключить тему', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');

@@ -38,7 +38,7 @@
   margin: 16px 0 24px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 16px;
 }
 .toolbar label {
   max-width: 520px;
@@ -58,7 +58,7 @@
   background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 10px;
   padding: 10px 12px;
 }
 .filters {
@@ -71,7 +71,7 @@
   background: var(--surface);
   color: var(--ink);
   padding: 10px 16px;
-  border-radius: 6px;
+  border-radius: 10px;
 }
 .filters button[aria-pressed='true'] {
   background: var(--accent-light);
@@ -87,7 +87,7 @@
   min-width: 0;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 24px;
   overflow-wrap: anywhere;
 }
@@ -140,7 +140,7 @@
   padding: 16px;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -157,7 +157,7 @@
   background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 16px;
   overflow-wrap: anywhere;
 }
 .dialog h2 {

@@ -27,7 +27,7 @@
   padding: 10px 22px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   font-weight: 700;
 }
 .navigation a:hover {
@@ -36,7 +36,7 @@
 .panel {
   min-width: 0;
   scroll-margin-top: 100px;
-  border-radius: 12px;
+  border-radius: 16px;
 }
 .panel :global(.panel-heading) {
   gap: 20px;
@@ -54,7 +54,7 @@
 .recovery {
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 16px;
   line-height: 1.6;
 }
@@ -77,7 +77,7 @@
   overflow-wrap: anywhere;
 }
 .workspace :global(.report-statuses) > div {
-  border-radius: 8px;
+  border-radius: 10px;
   justify-content: space-between;
   min-width: 150px;
 }
@@ -90,7 +90,7 @@
 .workspace :global(.admin-product-row) {
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 18px;
   gap: 16px;
 }
@@ -107,7 +107,7 @@
   max-width: calc(100vw - 24px);
   max-height: calc(100dvh - 24px);
   padding: 30px;
-  border-radius: 12px;
+  border-radius: 16px;
   min-width: 0;
 }
 .dialog :global(.form-info) {

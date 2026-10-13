@@ -78,7 +78,7 @@ test('Настоящая доставка: демооплата, назначе�
   await expect(dispatchCard).toContainText(address);
   await expect(dispatchCard).toContainText(`ПОСТАВКА #${deliveryId.slice(0, 8).toUpperCase()}`);
   await expect(dispatchCard.getByText('Ожидает', { exact: true })).toBeVisible();
-  await dispatchCard.getByRole('combobox', { name: 'Водитель', exact: true }).selectOption({ label: 'Водитель Демо' });
+  await dispatchCard.getByRole('combobox', { name: 'Водитель', exact: true }).selectOption({ label: 'Алексей Серов' });
   const initialDate = '2030-10-15';
   await dispatchCard.getByLabel('Дата рейса', { exact: true }).fill(initialDate);
   const assignedResponsePromise = page.waitForResponse(response => new URL(response.url()).pathname === `/api/v1/dispatch/deliveries/${deliveryId}` && response.request().method() === 'PATCH');

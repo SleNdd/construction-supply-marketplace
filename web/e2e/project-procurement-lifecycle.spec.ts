@@ -238,7 +238,7 @@ for (const theme of ['light', 'dark'] as const) for (const viewport of [{ width:
       await page.getByRole('button', { name: new RegExp(`ПОСТАВКА #${delivery.id.slice(0, 8).toUpperCase()}`) }).click();
       const card = page.getByRole('region', { name: 'Выбранная поставка', exact: true });
       await expect(card).toContainText(address);
-      await card.getByRole('combobox', { name: 'Водитель', exact: true }).selectOption({ label: 'Водитель Демо' });
+      await card.getByRole('combobox', { name: 'Водитель', exact: true }).selectOption({ label: 'Алексей Серов' });
       await card.getByLabel('Дата рейса', { exact: true }).fill(stageDate);
       const assigning = mutation(page, `/dispatch/deliveries/${delivery.id}`, 'PATCH');
       await card.getByRole('button', { name: 'Назначить', exact: true }).click();

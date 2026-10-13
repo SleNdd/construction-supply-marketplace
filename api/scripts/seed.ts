@@ -18,12 +18,12 @@ async function main() {
     // Существующий каталог не получает дополнительный коробочный запас при повторном seed.
     const freshCatalog=!(await client.query('SELECT 1 FROM products LIMIT 1')).rowCount;
     const users = [
-      ['buyer','Покупатель Демо','buyer@example.test'],
+      ['buyer','Михаил Орлов','buyer@example.test'],
       ['supplier1','Поставщик Волга','supplier@example.test'],
       ['supplier2','Поставщик Каспий','supplier2@example.test'],
-      ['dispatcher','Диспетчер Демо','dispatcher@example.test'],
-      ['driver','Водитель Демо','driver@example.test'],
-      ['admin','Администратор Демо','admin@example.test'],
+      ['dispatcher','Диспетчер','dispatcher@example.test'],
+      ['driver','Алексей Серов','driver@example.test'],
+      ['admin','Администратор','admin@example.test'],
     ] as const;
     const passwordHash = hashPassword('Demo2026!');
     for (const [key,name,email] of users) {
@@ -51,8 +51,8 @@ async function main() {
       ['plywood','wood','Фанера ФК 12 мм 1525×1525','лист',{'Толщина':'12 мм','Сорт':'2/4'},'Фанера для внутренних работ.'],
       ['wool','insulation','Минеральная вата 50 мм 6 м²','упаковка',{'Толщина':'50 мм','Площадь':'6 м²'},'Теплоизоляция для перегородок.'],
       ['membrane','insulation','Пароизоляционная мембрана 70 м²','рулон',{'Площадь':'70 м²'},'Пароизоляция для каркасных конструкций.'],
-      ['tile-beige-box','tile','Керамогранит Песчаник 60×60 — коробка','коробка',{'Формат':'60×60 см'},'Вымышленная демопозиция: 4 плитки, 1,44 м² в коробке.'],
-      ['tile-grey-box','tile','Плитка настенная Графит 30×60 — коробка','коробка',{'Формат':'30×60 см'},'Вымышленная демопозиция: 7 плиток, 1,26 м² в коробке.'],
+      ['tile-beige-box','tile','Керамогранит Песчаник 60×60 — коробка','коробка',{'Формат':'60×60 см'},'Матовый керамогранит песочного оттенка. В коробке 4 плитки, площадь покрытия 1,44 м².'],
+      ['tile-grey-box','tile','Плитка настенная Графит 30×60 — коробка','коробка',{'Формат':'30×60 см'},'Настенная плитка серого оттенка. В коробке 7 плиток, площадь покрытия 1,26 м².'],
     ] as const;
     const packaging:Record<string,Packaging>={cement:{kind:'dry-mix',packSizeKg:50},plaster:{kind:'dry-mix',packSizeKg:30},adhesive:{kind:'dry-mix',packSizeKg:25},'paint-white':{kind:'paint',packSizeL:10},'paint-facade':{kind:'paint',packSizeL:9},'tile-beige-box':{kind:'tiles',tileAreaM2:0.36,tilesPerPack:4},'tile-grey-box':{kind:'tiles',tileAreaM2:0.18,tilesPerPack:7}};
     for (const [key,category,name,unit,specs,description] of products) await client.query('INSERT INTO products(id,category_id,slug,name,unit,description,specs,packaging) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING',[id(key),id(category),key,name,unit,description,JSON.stringify(specs),packaging[key]?JSON.stringify(packaging[key]):null]);
@@ -74,7 +74,7 @@ async function main() {
     if (freshCatalog) {
       const secondStage=earliestDateInAstrakhan(60,now);
       const projectId=id('project-finishing');
-      await client.query('INSERT INTO projects(id,buyer_id,name,address,stages) VALUES($1,$2,$3,$4,$5)',[projectId,id('buyer'),'Отделка учебного объекта','Астрахань, ул. Савушкина, 6',JSON.stringify([{name:'Облицовка',date:firstStage},{name:'Окраска',date:secondStage}])]);
+      await client.query('INSERT INTO projects(id,buyer_id,name,address,stages) VALUES($1,$2,$3,$4,$5)',[projectId,id('buyer'),'Отделка двухкомнатной квартиры','Астрахань, ул. Савушкина, 6',JSON.stringify([{name:'Облицовка',date:firstStage},{name:'Окраска',date:secondStage}])]);
       const calculations=[
         {key:'tile-beige-box',kind:'tiles',inputs:{areaM2:24,wastePercent:10},date:firstStage},
         {key:'adhesive',kind:'dry-mix',inputs:{areaM2:24,layerMm:5,rateKgPerM2Mm:1.5,wastePercent:10},date:firstStage},
@@ -91,14 +91,14 @@ async function main() {
       {key:'demo-order-complete',product:'paint-white',quantity:2,status:'delivered',delivery:'delivered'},
     ]) {
       const offerId=id(`offer-${demo.product}-volga`);
-      const offer=await client.query<{price_kopecks:number;delivery_cost_kopecks:number;unit:string}>('SELECT o.price_kopecks,o.delivery_cost_kopecks,p.unit FROM offers o JOIN products p ON p.id=o.product_id WHERE o.id=$1',[offerId]);
+      const offer=await client.query<{price_kopecks:number;delivery_cost_kopecks:number;unit:string;departurePoint:Record<string,unknown>}>(`SELECT o.price_kopecks,o.delivery_cost_kopecks,p.unit,jsonb_build_object('warehouseId',w.id,'name',w.name,'address',w.address,'coordinates',CASE WHEN w.lon IS NULL OR w.lat IS NULL THEN NULL ELSE jsonb_build_array(w.lon,w.lat) END) AS "departurePoint" FROM offers o JOIN products p ON p.id=o.product_id JOIN warehouses w ON w.id=o.warehouse_id WHERE o.id=$1`,[offerId]);
       const price=offer.rows[0].price_kopecks;
       const deliveryCost=offer.rows[0].delivery_cost_kopecks;
-      const inserted=await client.query<{id:string}>('INSERT INTO orders(id,buyer_id,project_id,address,status,items_total_kopecks,delivery_total_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id',[id(demo.key),id('buyer'),id('project-demo'),'Астрахань, ул. Савушкина, 6',demo.status,price*demo.quantity,deliveryCost]);
+      const inserted=await client.query<{id:string}>('INSERT INTO orders(id,buyer_id,project_id,address,status,items_total_kopecks,delivery_total_kopecks,destination_lon,destination_lat) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING RETURNING id',[id(demo.key),id('buyer'),id('project-demo'),'Астрахань, ул. Савушкина, 6',demo.status,price*demo.quantity,deliveryCost,48.057,46.371]);
       if (!inserted.rowCount) continue;
       await client.query('UPDATE offers SET stock=stock-$1 WHERE id=$2',[demo.quantity,offerId]);
       await client.query('INSERT INTO order_items(id,order_id,offer_id,supplier_id,product_name,unit,quantity,price_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id(`${demo.key}-item`),id(demo.key),offerId,id('volga'),demo.product==='cement'?'Цемент М500 50 кг':'Краска интерьерная белая 10 л',offer.rows[0].unit,demo.quantity,price]);
-      await client.query('INSERT INTO deliveries(id,order_id,supplier_id,driver_id,status,scheduled_date,route,delivery_cost_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id(`${demo.key}-delivery`),id(demo.key),id('volga'),id('driver'),demo.delivery,earliestDateInAstrakhan(1,now),JSON.stringify([[48.003,46.351],[48.025,46.36],[48.057,46.371]]),deliveryCost]);
+      await client.query('INSERT INTO deliveries(id,order_id,supplier_id,driver_id,status,scheduled_date,route,delivery_cost_kopecks,departure_points) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[id(`${demo.key}-delivery`),id(demo.key),id('volga'),id('driver'),demo.delivery,earliestDateInAstrakhan(1,now),JSON.stringify([]),deliveryCost,JSON.stringify([offer.rows[0].departurePoint])]);
     }
     await client.query('COMMIT');
     console.log('Демоданные добавлены; существующие записи не изменены. Пароль демонстрационных аккаунтов: Demo2026!');

@@ -4,10 +4,12 @@ test('Главная показывает пример закупки без п�
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  const preview = page.locator('.hero-preview-panel');
-  await expect(preview).toContainText('Демопример');
-  await expect(preview).toContainText('Цемент М500 50 кг');
-  await expect(preview).toContainText('12 мешков');
+  const preview = page.getByRole('complementary', { name: 'Пример ведомости материалов' });
+  await expect(preview).toContainText('Пример расчёта');
+  await expect(preview).toContainText('Напольная плитка');
+  await expect(preview).toContainText('19 упак.');
+  await expect(preview).toContainText('8 мешков');
+  await expect(preview).toContainText('3 ведра');
   await expect(preview.getByRole('link', { name: 'Открыть объекты' })).toHaveAttribute('href', '/projects');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(await preview.evaluate(element => getComputedStyle(element).animationName)).toBe('none');

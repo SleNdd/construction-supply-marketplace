@@ -1,4 +1,4 @@
-# API «ОбъектМаркет»
+# API «СтройПоток»
 
 NestJS + PostgreSQL. Контракт приведён в [`openapi.yaml`](openapi.yaml); интерактивная версия доступна по `/api/docs`.
 

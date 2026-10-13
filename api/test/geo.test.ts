@@ -42,22 +42,39 @@ async function isolated(keys:boolean,fetchStub:typeof fetch,run:(logs:unknown[][
   }
 }
 
-test('деморежим не обращается к внешним сервисам',async()=>{
+test('подготовленные дорожные маршруты и местные подсказки работают без сети',async()=>{
   await isolated(false,async()=>{throw new Error('Unexpected network request');},async()=>{
-    assert.deepEqual(controller.config(),{mapKey:null,source:'demo'});
+    assert.deepEqual(controller.config(),{mapKey:null,source:'osm'});
     const suggestions=await controller.suggest('  Савушкина  ');
     assert.equal(suggestions.source,'demo');
-    assert.equal(suggestions.items.length,1);
     assert.deepEqual(suggestions.items[0].coordinates,[48.057,46.371]);
     assert.deepEqual((await controller.suggest('Нет такого адреса')).items,[]);
-    const route=await controller.route(query);
-    assert.equal(route.source,'demo');
-    assert.equal(route.distanceMeters,null);
-    assert.equal(route.durationSeconds,null);
-    assert.match(route.note!,/Схематический/);
-    const boundary=await controller.route({...query,fromLon:'180',toLon:'180'});
-    assert.ok(boundary.coordinates.every(([lon,lat])=>Math.abs(lon)<=180&&Math.abs(lat)<=90));
+    const route=await controller.route({...query,fromLon:'48.003',fromLat:'46.351',toLon:'48.057',toLat:'46.371'});
+    assert.equal(route.source,'prepared');
+    assert.ok(route.coordinates.length > 100);
+    assert.equal(route.distanceMeters,7463.5);
+    assert.equal(route.capturedAt,'2026-10-13');
   });
+});
+
+test('OSRM проверяет геометрию, кэширует ответ и не рисует путь при отказе',async()=>{
+  await isolated(false,async(url,options)=>{
+    assert.match(String(url),/^https:\/\/router.project-osrm.org\/route\/v1\/driving\//);
+    assert.ok(options?.signal instanceof AbortSignal);
+    return response({code:'Ok',routes:[{distance:1200,duration:180,geometry:{type:'LineString',coordinates:[[48.057,46.371],[48.035,46.351]]}}]});
+  },async()=>{
+    const instance=new GeoController();
+    const route=await instance.route(query);
+    assert.equal(route.source,'osrm');
+    globalThis.fetch=async()=>{throw new Error('Cache should avoid network');};
+    assert.deepEqual(await instance.route(query),route);
+    await assert.rejects(instance.route({...query,toLon:'48.036'}),error=>error instanceof ApiError&&error.status===503);
+  });
+  for (const data of [{code:'NoRoute'}, {code:'Ok',routes:[{distance:1,duration:1,geometry:{type:'LineString',coordinates:[[48,46],[181,46]]}}]}]) {
+    await isolated(false,async()=>response(data),async()=>{
+      await assert.rejects(new GeoController().route(query),unavailable('routing_unavailable'));
+    });
+  }
 });
 
 test('невалидный ввод отклоняется до fetch даже при наличии ключей',async()=>{

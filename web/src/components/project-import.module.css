@@ -3,8 +3,8 @@
 .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0; }
 .actions button { min-height: 44px; white-space: normal; }
 .file { display: grid; gap: 10px; font-weight: 600; font-size: 14px; }
-.file input { min-height: 44px; min-width: 0; max-width: 100%; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); padding: 8px; }
-.file input::file-selector-button { min-height: 44px; margin-right: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.file input { min-height: 44px; min-width: 0; max-width: 100%; color: var(--ink); border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); padding: 8px; }
+.file input::file-selector-button { min-height: 44px; margin-right: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); cursor: pointer; }
 .summary { font-size: 14px; line-height: 1.7; }
 .preview { list-style: none; padding: 0; display: grid; gap: 12px; max-height: 540px; overflow-y: auto; }
 .row { padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); overflow-wrap: anywhere; }
