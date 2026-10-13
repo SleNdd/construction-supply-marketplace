@@ -9,7 +9,6 @@ test('Мобильный каталог и карточка показывают
   await expect(card).toBeVisible();
   const width = await card.evaluate(element => element.getBoundingClientRect().width);
   expect(width).toBeGreaterThan(160);
-  expect(await card.locator('.product-name').evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(13);
   expect(await card.locator('.product-add').evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
   const nameSize = await card.locator('.product-name').evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize));
   expect(nameSize).toBeGreaterThanOrEqual(16);
