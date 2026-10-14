@@ -1,13 +1,35 @@
-param([switch]$NoBrowser)
+param([switch]$NoBrowser, [switch]$Stop)
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $siteUrl = 'http://localhost:3000'
+$dockerRoots = @(
+    (Join-Path $env:LOCALAPPDATA 'Programs\DockerDesktop'),
+    (Join-Path $env:ProgramFiles 'Docker\Docker')
+)
+
+function Find-DockerExecutable {
+    $command = Get-Command docker.exe -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+    foreach ($root in $dockerRoots) {
+        $candidate = Join-Path $root 'resources\bin\docker.exe'
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    }
+    return $null
+}
+
+function Find-DockerDesktop {
+    foreach ($root in $dockerRoots) {
+        $candidate = Join-Path $root 'Docker Desktop.exe'
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    }
+    return $null
+}
 
 function Test-DockerReady {
     $probe = New-Object Diagnostics.Process
     try {
-        $probe.StartInfo.FileName = (Get-Command docker.exe).Source
+        $probe.StartInfo.FileName = $dockerExe
         $probe.StartInfo.Arguments = 'info --format {{.OSType}}'
         $probe.StartInfo.UseShellExecute = $false
         $probe.StartInfo.CreateNoWindow = $true
@@ -22,11 +44,21 @@ function Test-DockerReady {
 }
 
 try {
-    if (-not (Get-Command docker.exe -ErrorAction SilentlyContinue)) {
+    $dockerExe = Find-DockerExecutable
+    if (-not $dockerExe) {
         throw 'Install Docker Desktop, then run this file again.'
     }
-    # Первый запуск создаёт отдельный пароль локальной базы.
     $envFile = Join-Path $projectRoot '.env'
+    if ($Stop) {
+        if (-not (Test-Path -LiteralPath $envFile)) {
+            Write-Host 'The project has not been started in this folder.'
+            exit 0
+        }
+        & $dockerExe compose --project-name stroypotok --project-directory $projectRoot --env-file $envFile -f (Join-Path $projectRoot 'docker-compose.yml') stop
+        if ($LASTEXITCODE -ne 0) { throw 'Could not stop the project. Check Docker Desktop.' }
+        exit 0
+    }
+    # Первый запуск создаёт отдельный пароль локальной базы.
     if (-not (Test-Path -LiteralPath $envFile)) {
         $randomBytes = New-Object byte[] 24
         $random = [Security.Cryptography.RandomNumberGenerator]::Create()
@@ -37,8 +69,8 @@ try {
         [IO.File]::WriteAllText($envFile, $settings, (New-Object Text.UTF8Encoding($false)))
     }
     if (-not (Test-DockerReady)) {
-        $desktopExe = Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
-        if (-not (Test-Path -LiteralPath $desktopExe)) { throw 'Start Docker Desktop and run this file again.' }
+        $desktopExe = Find-DockerDesktop
+        if (-not $desktopExe) { throw 'Start Docker Desktop and run this file again.' }
         Start-Process -FilePath $desktopExe -WindowStyle Hidden | Out-Null
         $deadline = [DateTime]::UtcNow.AddMinutes(4)
         do {
@@ -49,7 +81,7 @@ try {
     }
     Push-Location $projectRoot
     try {
-        & docker compose --project-name stroypotok --env-file $envFile up --build -d --wait --wait-timeout 180
+        & $dockerExe compose --project-name stroypotok --env-file $envFile up --build -d --wait --wait-timeout 180
         if ($LASTEXITCODE -ne 0) { throw 'Startup failed. Check Docker and the messages above.' }
     } finally { Pop-Location }
     Write-Host $siteUrl -ForegroundColor Green
