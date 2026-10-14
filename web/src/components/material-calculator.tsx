@@ -116,7 +116,7 @@ export function MaterialCalculator({ projectId, onAdded }: { projectId: string; 
     {result && <div className={styles.result} role="region" aria-label="Результат расчёта" aria-live="polite">
       <span className="overline">С УЧЁТОМ ЗАПАСА</span><div className={styles.total}>{quantityUnit(result.packages, result.unit)}</div>
       <p className={styles.coverage}>{kind === 'tiles' ? 'Покрытие' : 'В упаковках'}: {formatMeasure(result.coverage)} {result.coverageUnit}</p>
-      <div className={styles.formula}>{result.formula}<br/>Расчётный расход: {formatMeasure(result.calculatedConsumption)} {result.consumptionUnit}. Округление — до целой упаковки.</div>
+      <div className={styles.formula}>{result.formula}<br/>Расчётный расход: {formatMeasure(result.calculatedConsumption)} {result.consumptionUnit.replace(/\.$/, '')}. Округление — до целой упаковки.</div>
       {added ? <div className={styles.actions}><p className={styles.success}><Check size={20}/> Материал добавлен в перечень объекта</p><button className="btn btn-outline" type="button" onClick={resetResult}>Новый расчёт</button></div> : <>
         <div className={styles.field} style={{ marginTop: 18 }}><label htmlFor="calculation-stage">К этапу</label><input id="calculation-stage" type="date" value={stageDate} disabled={adding} onChange={event => { setStageDate(event.target.value); setError(''); }}/></div>
         <div className={styles.actions}><button className="btn btn-dark" type="button" disabled={adding} onClick={add}>{adding ? 'Добавляем…' : 'Добавить расчёт в объект'} <ArrowRight size={16}/></button>{error && <button className="btn btn-outline" type="button" disabled={adding} onClick={startNewCalculation}>Новый расчёт</button>}</div>

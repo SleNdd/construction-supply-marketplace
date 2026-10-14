@@ -16,7 +16,8 @@ test('Настоящий каталог: поиск применяется по 
   expect(new URL(page.url()).searchParams.get('q')).toBe('цемент');
   await expect(page.getByText(`Найдено товаров: ${result.total}`, { exact: true })).toBeVisible();
   await expect(page.locator('.product-card')).toHaveCount(result.items.length);
-  for (const name of await page.locator('.product-name').allTextContents()) expect(name.toLowerCase()).toContain('цемент');
+  await expect(page.locator('.product-name')).toHaveText(result.items.map((item: {name: string}) => item.name));
+  for (const item of result.items) expect(`${item.name} ${item.description}`.toLowerCase()).toContain('цемент');
   await page.reload();
   await expect(search).toHaveValue('цемент');
 });
