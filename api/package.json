@@ -14,7 +14,8 @@
     "smoke": "tsx test/smoke.ts",
     "test": "node --import tsx --test test/*.test.ts",
     "test:integration": "npm run build && tsx test/integration.ts",
-    "test:migrations": "npm run build && tsx test/migrations.ts"
+    "test:migrations": "npm run build && tsx test/migrations.ts",
+    "test:seed": "node --import tsx test/seed-expansion.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.6",

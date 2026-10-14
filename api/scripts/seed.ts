@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { hashPassword } from '../src/security';
 import { calculateMaterial, normalizeMaterialRequest, type MaterialProduct, type Packaging } from '../src/packaging';
 import { earliestDateInAstrakhan } from '../src/calendar-date';
+import { additionalProducts, additionalPackaging, additionalProjects } from './demo-catalog';
+import { seedDemoOrders } from './demo-orders';
 
 const id = (key: string) => {
   const h = createHash('md5').update(`objectmarket-demo-${key}`).digest('hex');
@@ -15,6 +17,8 @@ async function main() {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // Два параллельных запуска должны одинаково определить чистую базу.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',['objectmarket-demo-seed']);
     // Существующий каталог не получает дополнительный коробочный запас при повторном seed.
     const freshCatalog=!(await client.query('SELECT 1 FROM products LIMIT 1')).rowCount;
     const users = [
@@ -53,17 +57,24 @@ async function main() {
       ['membrane','insulation','Пароизоляционная мембрана 70 м²','рулон',{'Площадь':'70 м²'},'Пароизоляция для каркасных конструкций.'],
       ['tile-beige-box','tile','Керамогранит Песчаник 60×60 — коробка','коробка',{'Формат':'60×60 см'},'Матовый керамогранит песочного оттенка. В коробке 4 плитки, площадь покрытия 1,44 м².'],
       ['tile-grey-box','tile','Плитка настенная Графит 30×60 — коробка','коробка',{'Формат':'30×60 см'},'Настенная плитка серого оттенка. В коробке 7 плиток, площадь покрытия 1,26 м².'],
+      ...(freshCatalog ? additionalProducts : []),
     ] as const;
     const packaging:Record<string,Packaging>={cement:{kind:'dry-mix',packSizeKg:50},plaster:{kind:'dry-mix',packSizeKg:30},adhesive:{kind:'dry-mix',packSizeKg:25},'paint-white':{kind:'paint',packSizeL:10},'paint-facade':{kind:'paint',packSizeL:9},'tile-beige-box':{kind:'tiles',tileAreaM2:0.36,tilesPerPack:4},'tile-grey-box':{kind:'tiles',tileAreaM2:0.18,tilesPerPack:7}};
+    Object.assign(packaging,additionalPackaging);
     for (const [key,category,name,unit,specs,description] of products) await client.query('INSERT INTO products(id,category_id,slug,name,unit,description,specs,packaging) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING',[id(key),id(category),key,name,unit,description,JSON.stringify(specs),packaging[key]?JSON.stringify(packaging[key]):null]);
+    const additionalPrices = [28500,37500,68000,46000,24000,89000,43000,94000,76000,54000,72000,58000,69000,155000,115000,210000,194000,124000,43000,17000,35000,128000,24000,39000,68000,99000,185000,132000,175000,184000,156000,129000,86000,72000,142000];
     for (let index=0; index<products.length; index++) {
       for (let supplierIndex=0; supplierIndex<2; supplierIndex++) {
         const supplier = supplierIndex ? 'kaspiy' : 'volga';
         const warehouse = supplierIndex ? 'kaspiy-main' : 'volga-main';
         const key=products[index][0];
-        const price=key==='tile-beige-box'?(supplierIndex?191664:185760):key==='tile-grey-box'?(supplierIndex?188874:183708):42000+index*17300+supplierIndex*4100;
-        const stock=key.endsWith('-box') && !freshCatalog?0:40+index*3+supplierIndex*12;
-        await client.query('INSERT INTO offers(id,product_id,supplier_id,warehouse_id,price_kopecks,stock,delivery_days,delivery_cost_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING',[id(`offer-${key}-${supplier}`),id(key),id(supplier),id(warehouse),price,stock,1+supplierIndex,65000+supplierIndex*20000]);
+        const price=key==='tile-beige-box'?(supplierIndex?191664:185760):key==='tile-grey-box'?(supplierIndex?188874:183708):index<13?42000+index*17300+supplierIndex*4100:additionalPrices[index-13]+(supplierIndex?2500+((index%3)-1)*6000:0);
+        const unavailable=(key==='xps' && supplierIndex===1) || (key.endsWith('-box') && !freshCatalog);
+        const stock=unavailable?0:40+index*3+supplierIndex*12;
+        const active=!(key==='decorative-plaster' && supplierIndex===0);
+        const days=index<13?1+supplierIndex:1+(index+supplierIndex)%4;
+        const shipping=index<13?65000+supplierIndex*20000:45000+(index%4)*10000+supplierIndex*15000;
+        await client.query('INSERT INTO offers(id,product_id,supplier_id,warehouse_id,price_kopecks,stock,delivery_days,delivery_cost_kopecks,active) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING',[id(`offer-${key}-${supplier}`),id(key),id(supplier),id(warehouse),price,stock,days,shipping,active]);
       }
     }
     const now=new Date();
@@ -86,19 +97,14 @@ async function main() {
         await client.query('INSERT INTO project_items(id,project_id,product_id,quantity,stage_date) VALUES($1,$2,$3,$4,$5)',[id(`project-finishing-${row.key}`),projectId,product.id,calculation.packages,row.date]);
       }
     }
-    for (const demo of [
-      {key:'demo-order-active',product:'cement',quantity:4,status:'paid',delivery:'assigned'},
-      {key:'demo-order-complete',product:'paint-white',quantity:2,status:'delivered',delivery:'delivered'},
-    ]) {
-      const offerId=id(`offer-${demo.product}-volga`);
-      const offer=await client.query<{price_kopecks:number;delivery_cost_kopecks:number;unit:string;departurePoint:Record<string,unknown>}>(`SELECT o.price_kopecks,o.delivery_cost_kopecks,p.unit,jsonb_build_object('warehouseId',w.id,'name',w.name,'address',w.address,'coordinates',CASE WHEN w.lon IS NULL OR w.lat IS NULL THEN NULL ELSE jsonb_build_array(w.lon,w.lat) END) AS "departurePoint" FROM offers o JOIN products p ON p.id=o.product_id JOIN warehouses w ON w.id=o.warehouse_id WHERE o.id=$1`,[offerId]);
-      const price=offer.rows[0].price_kopecks;
-      const deliveryCost=offer.rows[0].delivery_cost_kopecks;
-      const inserted=await client.query<{id:string}>('INSERT INTO orders(id,buyer_id,project_id,address,status,items_total_kopecks,delivery_total_kopecks,destination_lon,destination_lat) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING RETURNING id',[id(demo.key),id('buyer'),id('project-demo'),'Астрахань, ул. Савушкина, 6',demo.status,price*demo.quantity,deliveryCost,48.057,46.371]);
-      if (!inserted.rowCount) continue;
-      await client.query('UPDATE offers SET stock=stock-$1 WHERE id=$2',[demo.quantity,offerId]);
-      await client.query('INSERT INTO order_items(id,order_id,offer_id,supplier_id,product_name,unit,quantity,price_kopecks) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id(`${demo.key}-item`),id(demo.key),offerId,id('volga'),demo.product==='cement'?'Цемент М500 50 кг':'Краска интерьерная белая 10 л',offer.rows[0].unit,demo.quantity,price]);
-      await client.query('INSERT INTO deliveries(id,order_id,supplier_id,driver_id,status,scheduled_date,route,delivery_cost_kopecks,departure_points) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[id(`${demo.key}-delivery`),id(demo.key),id('volga'),id('driver'),demo.delivery,earliestDateInAstrakhan(1,now),JSON.stringify([]),deliveryCost,JSON.stringify([offer.rows[0].departurePoint])]);
+    if (freshCatalog) {
+      // Расширение предназначено для новой базы: пользовательские остатки и истории старой базы не затрагиваются.
+      for (const project of additionalProjects) {
+        const stages=project.stages.map(([name,days])=>({name,date:earliestDateInAstrakhan(days,now)}));
+        await client.query('INSERT INTO projects(id,buyer_id,name,address,stages) VALUES($1,$2,$3,$4,$5)',[id(project.key),id('buyer'),project.name,project.address,JSON.stringify(stages)]);
+        for (const [product,quantity,stage] of project.items) await client.query('INSERT INTO project_items(id,project_id,product_id,quantity,stage_date) VALUES($1,$2,$3,$4,$5)',[id(`${project.key}-${product}`),id(project.key),id(product),quantity,stages[stage].date]);
+      }
+      await seedDemoOrders(client,id,now);
     }
     await client.query('COMMIT');
     console.log('Демоданные добавлены; существующие записи не изменены. Пароль демонстрационных аккаунтов: Demo2026!');
